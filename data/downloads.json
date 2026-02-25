@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "releaseDate": "2026-02-25",
+  "downloads": {
+    "macos": {
+      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Pulsr-1.0.3.dmg",
+      "arch": "Apple Silicon & Intel"
+    },
+    "windows": {
+      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Pulsr%20Setup%201.0.3.exe",
+      "arch": "Windows x64"
+    },
+    "linux": {
+      "url": "#",
+      "arch": "Linux x64 AppImage"
+    }
+  }
+}
