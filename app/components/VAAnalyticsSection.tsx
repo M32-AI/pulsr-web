@@ -221,9 +221,9 @@ export default function VAAnalyticsSection({
                 </Pie>
                 <Tooltip
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: any, name: string) => [
+                  formatter={(value: any, name?: unknown) => [
                     `${value} screenshots`,
-                    name,
+                    String(name ?? ""),
                   ]}
                 />
               </PieChart>
@@ -275,9 +275,9 @@ export default function VAAnalyticsSection({
                   />
                   <Tooltip
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(value: any, name: string) => [
+                    formatter={(value: any, name?: unknown) => [
                       `${value} screenshot${value !== 1 ? "s" : ""}`,
-                      name,
+                      String(name ?? ""),
                     ]}
                   />
                   {categoryNames.map((cat) => (
