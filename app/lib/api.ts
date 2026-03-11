@@ -6,14 +6,35 @@ function getAccessToken() {
   return useAuthStore.getState().accessToken ?? "";
 }
 
-async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const accessToken = getAccessToken();
-  const headers: Record<string, string> = {
+function buildHeaders(accessToken: string, overrides: RequestInit["headers"] = {}): Record<string, string> {
+  return {
     "Content-Type": "application/json",
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    ...((options.headers as Record<string, string>) ?? {}),
+    ...((overrides as Record<string, string>) ?? {}),
   };
-  return fetch(`${API_URL}${path}`, { ...options, headers });
+}
+
+async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  let accessToken = getAccessToken();
+  let res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: buildHeaders(accessToken, options.headers),
+  });
+
+  if (res.status === 401) {
+    try {
+      await useAuthStore.getState().refreshSession();
+      accessToken = getAccessToken();
+      res = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: buildHeaders(accessToken, options.headers),
+      });
+    } catch {
+      // refreshSession already called signOut — return the 401 so callers handle it
+    }
+  }
+
+  return res;
 }
 
 export async function getLive() {

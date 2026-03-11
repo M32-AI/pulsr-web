@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { apiSignIn, apiSignOut, apiRefreshSession, SignInInput } from "@/app/lib/auth";
+import { apiSignIn, apiSignOut, apiRefreshSession, apiGetMe, SignInInput } from "@/app/lib/auth";
 
 const STORAGE_KEY = "pulsr-auth";
 
@@ -90,6 +90,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const stored = loadStored();
       if (!stored) return;
+
+      // Optimistically restore state so UI renders immediately
       set({
         isAuthenticated: true,
         user: stored.user,
@@ -97,6 +99,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         refreshToken: stored.refreshToken,
         assistantEmails: stored.assistantEmails ?? [],
       });
+
+      // Validate the access token; if expired, proactively refresh
+      const me = await apiGetMe(stored.accessToken);
+      if (!me) {
+        // Access token is expired or invalid — attempt a silent refresh
+        try {
+          await get().refreshSession();
+        } catch {
+          // Refresh token is also expired — clear everything and force re-login
+          await get().signOut();
+        }
+      }
     } finally {
       set({ isLoading: false });
     }
@@ -104,11 +118,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   refreshSession: async () => {
     const { refreshToken } = get();
-    if (!refreshToken) throw new Error("No refresh token");
-    const session = await apiRefreshSession(refreshToken);
-    const user: User = { ...session.user, role: session.role };
-    const assistantEmails = session.assistant_emails ?? [];
-    saveStored({ accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
-    set({ accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
+    if (!refreshToken) {
+      await get().signOut();
+      throw new Error("No refresh token");
+    }
+    try {
+      const session = await apiRefreshSession(refreshToken);
+      const user: User = { ...session.user, role: session.role };
+      const assistantEmails = session.assistant_emails ?? [];
+      saveStored({ accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
+      set({ isAuthenticated: true, accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
+    } catch (err) {
+      // Refresh token expired or revoked — clear broken auth state
+      await get().signOut();
+      throw err;
+    }
   },
 }));
