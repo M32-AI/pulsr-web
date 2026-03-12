@@ -20,14 +20,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
   }, [isAuthenticated, restoreSessionStore]);
 
+  const isAllowed = user?.role === "admin" || user?.role === "supervisor" || user?.role === "manager";
+
   useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated) {
       router.replace("/login");
-    } else if (user?.role !== "admin") {
+    } else if (!isAllowed) {
       router.replace("/unauthorized");
     }
-  }, [isLoading, isAuthenticated, user, router]);
+  }, [isLoading, isAuthenticated, isAllowed, router]);
 
   if (isLoading) {
     return (
@@ -39,7 +41,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     );
   }
 
-  if (!isAuthenticated || user?.role !== "admin") return null;
+  if (!isAuthenticated || !isAllowed) return null;
 
   return <>{children}</>;
 }
