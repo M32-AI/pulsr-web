@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useAuthStore } from "../../store/authStore";
 import { convertShiftToLocalTime } from "../../lib/utils";
+import { timezoneToFlag, shiftStartToUTC } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
+import AlertsPanel from "../../components/AlertsPanel";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -381,9 +383,8 @@ function formatISOTime(isoStr: string | null | undefined): string {
 
 function computeStartDiff(va: VASnapshot): number | null {
   if (!va.startTime || !va.metadata?.shift_start_time) return null;
-  const [sh, sm] = va.metadata.shift_start_time.split(":").map(Number);
-  const shiftDate = new Date();
-  shiftDate.setHours(sh, sm, 0, 0);
+  const tzAbbr = va.metadata.shift_time_zone ?? "UTC";
+  const shiftDate = shiftStartToUTC(va.metadata.shift_start_time, tzAbbr);
   const actualStart = new Date(va.startTime);
   return Math.round((actualStart.getTime() - shiftDate.getTime()) / 60000);
 }
@@ -1174,27 +1175,7 @@ function TopHeader({
         <div className="w-px h-4 bg-gray-200" />
 
         {/* Alerts */}
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
-        >
-          <svg
-            className="w-4 h-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 01-3.46 0" />
-          </svg>
-          Alerts
-          {flaggedCount > 0 && (
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">
-              {flaggedCount}
-            </span>
-          )}
-        </button>
+        <AlertsPanel />
 
         <div className="w-px h-4 bg-gray-200" />
 
@@ -1293,20 +1274,16 @@ function VACard({
   const shiftTZ = meta?.shift_time_zone ?? "";
 
   let endTimeDisplay = "--";
+  let startTimeDisplay = "--";
   if (shiftEnd && shiftStart && shiftTZ) {
-    try {
       const local = convertShiftToLocalTime({
         shift_start_time: shiftStart,
         shift_end_time: shiftEnd,
         shift_time_zone: shiftTZ,
       });
       endTimeDisplay = local.localEndTime;
-    } catch {
-      endTimeDisplay = shiftEnd;
-    }
+      startTimeDisplay = local.localStartTime;
   }
-
-  const startTimeDisplay = va.startTime ? formatISOTime(va.startTime) : "--";
 
   return (
     <button
@@ -1342,8 +1319,8 @@ function VACard({
               <span className="text-sm font-semibold text-gray-900 truncate">
                 {name}
               </span>
-              {meta?.country && (
-                <span className="text-xs shrink-0">{meta.country}</span>
+              {timezoneToFlag(shiftTZ) && (
+                <span className="text-sm shrink-0" title={shiftTZ}>{timezoneToFlag(shiftTZ)}</span>
               )}
               {needsAttn && (
                 <svg
@@ -1387,7 +1364,8 @@ function VACard({
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Start</p>
           <p className="text-gray-700 font-medium">{startTimeDisplay}</p>
-          {diffMin !== null && diffMin > 5 && (
+          {/* //TODO: Add back in when we have the API to get the diffMin */}
+          {/* {diffMin !== null && diffMin > 5 && (
             <p className="text-red-500 font-semibold text-[9px]">
               Late +{diffMin}m
             </p>
@@ -1403,7 +1381,7 @@ function VACard({
               <p className="text-emerald-500 font-semibold text-[9px]">
                 On Time
               </p>
-            )}
+            )} */}
         </div>
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Break</p>
@@ -1414,7 +1392,7 @@ function VACard({
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Ends</p>
           <p className="text-gray-700 font-medium">{endTimeDisplay}</p>
-          <p className="text-red-500 font-medium">{va.lastSeenAt ? formatISOTime(va.lastSeenAt) : "--"}</p>
+          {/* <p className="text-red-500 font-medium">{va.lastSeenAt ? formatISOTime(va.lastSeenAt) : "--"}</p> */}
         </div>
       </div>
     </button>
@@ -1970,7 +1948,7 @@ function RoleResponsibilitiesModal({
                     onChange={(e) => setTitle(e.target.value)}
                     maxLength={200}
                     placeholder="e.g. Customer Support Specialist"
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-300"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-300 text-gray-900"
                   />
                 </div>
                 <div>
@@ -1978,7 +1956,7 @@ function RoleResponsibilitiesModal({
                     className="block text-xs font-medium text-gray-600 mb-1"
                     htmlFor="jd-description"
                   >
-                    Description <span className="text-red-400">*</span>
+                    Description <span className="text-gray-400 font-normal">(min 10 characters)</span><span className="text-red-400">{" "}*</span>
                   </label>
                   <textarea
                     id="jd-description"
@@ -1987,7 +1965,7 @@ function RoleResponsibilitiesModal({
                     rows={6}
                     maxLength={5000}
                     placeholder="Describe the VA's responsibilities, tools used, and what productive work looks like…"
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-300 resize-none"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-300 resize-none text-gray-900"
                   />
                   <p className="text-[10px] text-gray-400 mt-0.5 text-right">
                     {description.length}/5000
@@ -2328,8 +2306,8 @@ function VADetailPanel({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <h1 className="text-xl font-bold text-gray-900">{name}</h1>
-                {meta?.country && (
-                  <span className="text-base">{meta.country}</span>
+                {timezoneToFlag(timezone) && (
+                  <span className="text-base" title={timezone}>{timezoneToFlag(timezone)}</span>
                 )}
                 {needsAttn && (
                   <svg

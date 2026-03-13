@@ -100,6 +100,40 @@ export async function sessionStop(): Promise<void> {
   }
 }
 
+// Alerts API
+
+export interface Alert {
+  id: string;
+  vaId: string;
+  sessionId: string | null;
+  screenshotId: string | null;
+  alertType: "long_break" | "high_non_work_activity" | "policy_violation" | "session_idle";
+  severity: "alert" | "warning" | "quality";
+  message: string;
+  metadata: Record<string, unknown> | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export async function getAlerts(
+  unreadOnly = false,
+  limit = 50
+): Promise<{ alerts: Alert[]; total: number; unreadCount: number }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (unreadOnly) params.set("unread_only", "true");
+  const res = await apiFetch(`/api/alerts?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch alerts");
+  return res.json();
+}
+
+export async function markAlertsRead(ids: string[]): Promise<void> {
+  const res = await apiFetch("/api/alerts/mark-read", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new Error("Failed to mark alerts read");
+}
+
 export async function sessionRestore(): Promise<SessionResult | null> {
   const res = await apiFetch("/sessions?status=active&limit=1");
   if (!res.ok) return null;
