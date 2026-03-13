@@ -5,6 +5,40 @@ import { apiSignIn, apiSignOut, apiRefreshSession, apiGetMe, SignInInput } from 
 
 const STORAGE_KEY = "pulsr-auth";
 
+// Decode JWT payload without a library
+function getTokenExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+// Module-level state for proactive refresh timer and concurrent refresh dedup
+let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let _refreshPromise: Promise<void> | null = null;
+
+function scheduleProactiveRefresh(accessToken: string, refreshFn: () => Promise<void>) {
+  if (_refreshTimer) clearTimeout(_refreshTimer);
+  const expiry = getTokenExpiry(accessToken);
+  if (!expiry) return;
+  // Refresh 60 seconds before expiry
+  const delay = expiry - Date.now() - 60_000;
+  if (delay <= 0) {
+    refreshFn();
+    return;
+  }
+  _refreshTimer = setTimeout(refreshFn, delay);
+}
+
+function clearRefreshTimer() {
+  if (_refreshTimer) {
+    clearTimeout(_refreshTimer);
+    _refreshTimer = null;
+  }
+}
+
 interface User {
   id: string;
   email: string;
@@ -75,9 +109,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       refreshToken: session.refresh_token,
       assistantEmails,
     });
+    scheduleProactiveRefresh(session.access_token, () => get().refreshSession().catch(() => {}));
   },
 
   signOut: async () => {
+    clearRefreshTimer();
+    _refreshPromise = null;
     const { accessToken } = get();
     if (accessToken) {
       await apiSignOut(accessToken).catch(() => {});
@@ -110,28 +147,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           // Refresh token is also expired — clear everything and force re-login
           await get().signOut();
         }
+      } else {
+        scheduleProactiveRefresh(stored.accessToken, () => get().refreshSession().catch(() => {}));
       }
     } finally {
       set({ isLoading: false });
     }
   },
 
-  refreshSession: async () => {
-    const { refreshToken } = get();
-    if (!refreshToken) {
-      await get().signOut();
-      throw new Error("No refresh token");
-    }
-    try {
-      const session = await apiRefreshSession(refreshToken);
-      const user: User = { ...session.user, role: session.role };
-      const assistantEmails = session.assistant_emails ?? [];
-      saveStored({ accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
-      set({ isAuthenticated: true, accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
-    } catch (err) {
-      // Refresh token expired or revoked — clear broken auth state
-      await get().signOut();
-      throw err;
-    }
+  refreshSession: () => {
+    // Deduplicate concurrent refresh calls — all callers share the same in-flight promise
+    if (_refreshPromise) return _refreshPromise;
+
+    _refreshPromise = (async () => {
+      const { refreshToken } = get();
+      if (!refreshToken) {
+        await get().signOut();
+        throw new Error("No refresh token");
+      }
+      try {
+        const session = await apiRefreshSession(refreshToken);
+        const user: User = { ...session.user, role: session.role };
+        const assistantEmails = session.assistant_emails ?? [];
+        saveStored({ accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
+        set({ isAuthenticated: true, accessToken: session.access_token, refreshToken: session.refresh_token, user, assistantEmails });
+        scheduleProactiveRefresh(session.access_token, () => get().refreshSession().catch(() => {}));
+      } catch (err) {
+        // Refresh token expired or revoked — clear broken auth state
+        await get().signOut();
+        throw err;
+      } finally {
+        _refreshPromise = null;
+      }
+    })();
+
+    return _refreshPromise;
   },
 }));

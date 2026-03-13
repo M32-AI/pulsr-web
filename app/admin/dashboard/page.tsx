@@ -26,13 +26,15 @@ interface VAMetadata {
 }
 
 interface VASnapshot {
-  vaId: string;
+ vaId: string;
   email: string;
   status: VAStatus;
+  sessionType: 'work' | 'break';
   sessionId: string | null;
   startTime: string | null;
   elapsedSeconds: number | null;
-  todayTotalSeconds: number | null;
+  todayWorkSeconds: number | null;
+  todayBreakSeconds: number | null;
   idleSeconds: number;
   lastSeenAt: string | null;
   metadata: VAMetadata | null;
@@ -117,6 +119,15 @@ interface JobDescription {
   updatedAt: string;
 }
 
+interface WeeklyPerformanceMetrics {
+  daysLate: number;
+  onTime: number;
+  early: number;
+  avgDelayMinutes: number | null;
+  totalHours: number;
+  avgProductivityScore: number | null;
+}
+
 interface AssignedClient {
   id: string;
   biz_id: string;
@@ -167,7 +178,7 @@ function getAvatarColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function formatElapsed(seconds: number | null): string {
+function formatSecondsToReadableTimeFormat(seconds: number | null): string {
   if (seconds === null || seconds === 0) return "--";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -190,9 +201,9 @@ function parseShiftHour(timeStr: string | undefined): number {
 }
 
 function getStatusBadge(va: VASnapshot): { label: string; className: string } {
-  const productivity = va.todayTotalSeconds
-    ? (va.todayTotalSeconds - va.idleSeconds) / va.todayTotalSeconds
-    : 0;
+  const productivity = va.sessionType === 'work'
+    ? (va.todayWorkSeconds ?? 0 - va.idleSeconds) / (va.todayWorkSeconds ?? 0)
+    : (va.todayBreakSeconds ?? 0 - va.idleSeconds) / (va.todayBreakSeconds ?? 0)
 
   if (va.status === "idle") {
     return { label: "Offline", className: "bg-gray-100 text-gray-500" };
@@ -203,10 +214,10 @@ function getStatusBadge(va: VASnapshot): { label: string; className: string } {
       className: "bg-amber-400 text-white",
     };
   }
-  if (productivity < 0.4 && va.todayTotalSeconds && va.todayTotalSeconds > 1800) {
+  if (productivity < 0.4 && va.todayWorkSeconds && va.todayWorkSeconds > 1800) {
     return { label: "Intervention", className: "bg-red-500 text-white" };
   }
-  if (productivity < 0.6 && va.todayTotalSeconds && va.todayTotalSeconds > 1800) {
+  if (productivity < 0.6 && va.todayWorkSeconds && va.todayWorkSeconds > 1800) {
     return { label: "At Risk", className: "bg-orange-500 text-white" };
   }
   return {
@@ -216,9 +227,9 @@ function getStatusBadge(va: VASnapshot): { label: string; className: string } {
 }
 
 function getRiskScore(va: VASnapshot): number {
-  if (!va.todayTotalSeconds || va.todayTotalSeconds === 0) return 0;
+  if (!va.todayWorkSeconds || va.todayWorkSeconds === 0) return 0;
   const activeRatio =
-    (va.todayTotalSeconds - va.idleSeconds) / va.todayTotalSeconds;
+    (va.todayWorkSeconds - va.idleSeconds) / va.todayWorkSeconds;
   return Math.round(activeRatio * 10);
 }
 
@@ -517,28 +528,37 @@ function WeekDatePicker({
 // ── Performance Overview ────────────────────────────────────────────────────
 
 function PerformanceOverview({
-  dailySummary,
+  weeklyMetrics,
+  loading,
 }: {
-  dailySummary: DailySummary | null;
+  weeklyMetrics: WeeklyPerformanceMetrics | null;
+  loading: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
 
-  // TODO: Connect to aggregated performance API when available
-  const productivity = dailySummary?.avgProductivityScore ?? null;
+  const fmt = (n: number | null, suffix = "") =>
+    n !== null ? `${n}${suffix}` : null;
 
   const metrics: Array<{
     value: string | null;
     label: string;
-    sub?: string;
     valueClass: string;
   }> = [
-    { value: null, label: "DAYS LATE", valueClass: "text-red-500" },
-    { value: null, label: "ON TIME", valueClass: "text-emerald-500" },
-    { value: null, label: "EARLY", valueClass: "text-gray-800" },
-    { value: null, label: "AVG DELAY", valueClass: "text-gray-800" },
-    { value: null, label: "TOTAL HOURS", valueClass: "text-gray-800" },
+    { value: fmt(weeklyMetrics?.daysLate ?? null), label: "DAYS LATE", valueClass: "text-red-500" },
+    { value: fmt(weeklyMetrics?.onTime ?? null), label: "ON TIME", valueClass: "text-emerald-500" },
+    { value: fmt(weeklyMetrics?.early ?? null), label: "EARLY", valueClass: "text-gray-800" },
     {
-      value: productivity !== null ? `${productivity}%` : null,
+      value: weeklyMetrics?.avgDelayMinutes != null ? `${weeklyMetrics.avgDelayMinutes}m` : null,
+      label: "AVG DELAY",
+      valueClass: "text-gray-800",
+    },
+    {
+      value: weeklyMetrics?.totalHours != null ? `${weeklyMetrics.totalHours}h` : null,
+      label: "TOTAL HOURS",
+      valueClass: "text-gray-800",
+    },
+    {
+      value: weeklyMetrics?.avgProductivityScore != null ? `${weeklyMetrics.avgProductivityScore}%` : null,
       label: "PRODUCTIVITY",
       valueClass: "text-blue-600",
     },
@@ -583,19 +603,16 @@ function PerformanceOverview({
               key={m.label}
               className={`flex flex-col items-center justify-center py-5 px-2 ${i > 0 ? "border-l border-gray-100" : ""}`}
             >
-              <span
-                className={`text-2xl font-bold ${m.value ? m.valueClass : "text-gray-300"}`}
-              >
-                {m.value ?? "--"}
-              </span>
+              {loading ? (
+                <div className="h-7 w-10 bg-gray-100 rounded animate-pulse mb-1" />
+              ) : (
+                <span className={`text-2xl font-bold ${m.value ? m.valueClass : "text-gray-300"}`}>
+                  {m.value ?? "--"}
+                </span>
+              )}
               <span className="text-[10px] text-gray-400 uppercase font-medium mt-1 text-center leading-tight">
                 {m.label}
               </span>
-              {m.sub && (
-                <span className={`text-[10px] mt-0.5 ${m.valueClass}`}>
-                  {m.sub}
-                </span>
-              )}
             </div>
           ))}
         </div>
@@ -1391,12 +1408,13 @@ function VACard({
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Break</p>
           <p className="text-gray-700 font-medium">
-            {meta?.break_time ?? "--"}
+            {formatSecondsToReadableTimeFormat(va.todayBreakSeconds)}
           </p>
         </div>
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Ends</p>
           <p className="text-gray-700 font-medium">{endTimeDisplay}</p>
+          <p className="text-red-500 font-medium">{va.lastSeenAt ? formatISOTime(va.lastSeenAt) : "--"}</p>
         </div>
       </div>
     </button>
@@ -2086,6 +2104,8 @@ function VADetailPanel({
 }) {
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
+  const [weeklyMetrics, setWeeklyMetrics] = useState<WeeklyPerformanceMetrics | null>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [slotData, setSlotData] = useState<Record<number, SlotData>>({});
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -2164,6 +2184,20 @@ function VADetailPanel({
   useEffect(() => {
     fetchDailySummary();
   }, [fetchDailySummary]);
+
+  const weekStart = getWeekDays(today)[0];
+
+  useEffect(() => {
+    if (!va.vaId || !accessToken) return;
+    setLoadingMetrics(true);
+    fetch(`${API_BASE_URL}/admin/performance?vaId=${va.vaId}&weekStart=${weekStart}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setWeeklyMetrics(data?.metrics ?? null))
+      .catch(() => setWeeklyMetrics(null))
+      .finally(() => setLoadingMetrics(false));
+  }, [va.vaId, weekStart, accessToken]);
 
   const fetchSlotData = useCallback(
     async (slot: HourSlot) => {
@@ -2423,7 +2457,7 @@ function VADetailPanel({
       <WeekDatePicker selectedDate={date} onChange={onDateChange} />
 
       {/* ── Performance Overview ─────────────────────────────────────── */}
-      <PerformanceOverview dailySummary={dailySummary} />
+      <PerformanceOverview weeklyMetrics={weeklyMetrics} loading={loadingMetrics} />
 
       {/* ── Role Responsibilities ────────────────────────────────────── */}
       <div className="mx-6 mb-4 border border-gray-200 rounded-xl overflow-hidden bg-white">
