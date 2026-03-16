@@ -1,6 +1,24 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function UnauthorizedPage() {
+  const router = useRouter();
+
+    useEffect(() => {
+      const timer = setTimeout(async () => {
+        // Optionally, clear any local/session storage/auth tokens here
+        if (typeof window !== "undefined") {
+          // Example: remove supabase tokens, could be customized as needed
+          localStorage.clear();
+        }
+        router.replace("/login");
+      }, 10000);
+
+      return () => clearTimeout(timer);
+    }, [router]);
   return (
     <div className="relative min-h-screen bg-black flex items-center justify-center overflow-hidden">
       {/* Dashed grid lines */}
