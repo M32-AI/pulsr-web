@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,6 +30,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <Script
+          id="feedbucket"
+          strategy="afterInteractive"
+          data-feedbucket="PcuM73bWVVqTrDPJqi6z"
+          src="https://cdn.feedbucket.app/assets/feedbucket.js"
+        />
       </body>
     </html>
   );
