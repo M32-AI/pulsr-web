@@ -130,6 +130,41 @@ interface WeeklyPerformanceMetrics {
   avgProductivityScore: number | null;
 }
 
+interface DailyPerformanceMetrics {
+  totalWorkSeconds: number;
+  totalWorkHours: number;
+  completedWorkSeconds: number;
+  liveWorkSeconds: number;
+  completedBreakSeconds: number;
+  avgProductivityScore: number | null;
+  screenshotCount: number;
+}
+
+interface DailyLiveSession {
+  sessionId: string;
+  status: string;
+  sessionType: string;
+  startTime: string;
+  currentDurationSeconds: number;
+  idleSeconds: number;
+}
+
+interface DailyPunctuality {
+  status: "on_time" | "late" | "early" | "no_session";
+  delayMinutes: number | null;
+  firstSessionStart: string | null;
+  shiftStart: string | null;
+}
+
+interface DailyPerformanceResponse {
+  vaId: string;
+  date: string;
+  metrics: DailyPerformanceMetrics;
+  liveSession: DailyLiveSession | null;
+  punctuality: DailyPunctuality;
+  meta: { timezone: string; shiftAvailable: boolean; generatedAt: string };
+}
+
 interface AssignedClient {
   id: string;
   biz_id: string;
@@ -610,6 +645,163 @@ function PerformanceOverview({
                 <span className={`text-2xl font-bold ${m.value ? m.valueClass : "text-gray-300"}`}>
                   {m.value ?? "--"}
                 </span>
+              )}
+              <span className="text-[10px] text-gray-400 uppercase font-medium mt-1 text-center leading-tight">
+                {m.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Daily Performance Overview ──────────────────────────────────────────────
+
+function DailyPerformanceOverview({
+  metrics,
+  punctuality,
+  liveSession,
+  loading,
+  date,
+}: {
+  metrics: DailyPerformanceMetrics | null;
+  punctuality: DailyPunctuality | null;
+  liveSession: DailyLiveSession | null;
+  loading: boolean;
+  date: string;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  const isToday = date === new Date().toISOString().split("T")[0];
+  const isLive = liveSession?.status === "active";
+
+  const punctualityDisplay = () => {
+    if (!punctuality || punctuality.status === "no_session") return null;
+    if (punctuality.status === "late" && punctuality.delayMinutes !== null)
+      return `+${punctuality.delayMinutes}m`;
+    if (punctuality.status === "early" && punctuality.delayMinutes !== null)
+      return `${punctuality.delayMinutes}m`;
+    return "On Time";
+  };
+
+  const punctualityClass = () => {
+    if (!punctuality || punctuality.status === "no_session") return "text-gray-300";
+    if (punctuality.status === "late") return "text-red-500";
+    if (punctuality.status === "early") return "text-blue-500";
+    return "text-emerald-500";
+  };
+
+  const cols: Array<{
+    value: string | null;
+    label: string;
+    valueClass: string;
+    dot?: string;
+  }> = [
+    {
+      value: metrics?.totalWorkHours != null ? `${metrics.totalWorkHours}h` : null,
+      label: "HOURS TODAY",
+      valueClass: "text-gray-800",
+    },
+    {
+      value: metrics ? formatSecondsToReadableTimeFormat(metrics.completedBreakSeconds) : null,
+      label: "BREAK TIME",
+      valueClass: "text-gray-800",
+    },
+    {
+      value: isLive && liveSession
+        ? formatSecondsToReadableTimeFormat(liveSession.currentDurationSeconds)
+        : metrics?.liveWorkSeconds
+          ? formatSecondsToReadableTimeFormat(metrics.liveWorkSeconds)
+          : null,
+      label: isLive ? "LIVE NOW" : "LIVE SESSION",
+      valueClass: isLive ? "text-emerald-500" : "text-gray-400",
+      dot: isLive ? "emerald" : undefined,
+    },
+    {
+      value: metrics?.screenshotCount != null ? String(metrics.screenshotCount) : null,
+      label: "SCREENSHOTS",
+      valueClass: "text-gray-800",
+    },
+    {
+      value: punctualityDisplay(),
+      label: "PUNCTUALITY",
+      valueClass: punctualityClass(),
+    },
+    {
+      value: metrics?.avgProductivityScore != null ? `${metrics.avgProductivityScore}%` : null,
+      label: "PRODUCTIVITY",
+      valueClass: "text-blue-600",
+    },
+  ];
+
+  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <div className="mx-6 mb-4 border border-gray-200 rounded-xl overflow-hidden bg-white">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <svg
+            className="w-4 h-4 text-gray-500"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          <span className="text-sm font-semibold text-gray-800">
+            Daily Overview
+          </span>
+          <span className="text-xs text-gray-400 font-normal">— {dateLabel}</span>
+          {isToday && isLive && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              LIVE
+            </span>
+          )}
+        </div>
+        <svg
+          className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? "" : "rotate-180"}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M18 15l-6-6-6 6" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="grid grid-cols-6 border-t border-gray-100">
+          {cols.map((m, i) => (
+            <div
+              key={m.label}
+              className={`flex flex-col items-center justify-center py-5 px-2 ${i > 0 ? "border-l border-gray-100" : ""}`}
+            >
+              {loading ? (
+                <div className="h-7 w-10 bg-gray-100 rounded animate-pulse mb-1" />
+              ) : (
+                <div className="flex items-center gap-1">
+                  {m.dot === "emerald" && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  )}
+                  <span className={`text-2xl font-bold ${m.value ? m.valueClass : "text-gray-300"}`}>
+                    {m.value ?? "--"}
+                  </span>
+                </div>
               )}
               <span className="text-[10px] text-gray-400 uppercase font-medium mt-1 text-center leading-tight">
                 {m.label}
@@ -2084,6 +2276,8 @@ function VADetailPanel({
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [weeklyMetrics, setWeeklyMetrics] = useState<WeeklyPerformanceMetrics | null>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [dailyPerfData, setDailyPerfData] = useState<DailyPerformanceResponse | null>(null);
+  const [loadingDailyMetrics, setLoadingDailyMetrics] = useState(true);
   const [slotData, setSlotData] = useState<Record<number, SlotData>>({});
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -2176,6 +2370,18 @@ function VADetailPanel({
       .catch(() => setWeeklyMetrics(null))
       .finally(() => setLoadingMetrics(false));
   }, [va.vaId, weekStart, accessToken]);
+
+  useEffect(() => {
+    if (!va.vaId || !accessToken) return;
+    setLoadingDailyMetrics(true);
+    fetch(`${API_BASE_URL}/admin/performance/daily?vaId=${va.vaId}&date=${today}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: DailyPerformanceResponse | null) => setDailyPerfData(data))
+      .catch(() => setDailyPerfData(null))
+      .finally(() => setLoadingDailyMetrics(false));
+  }, [va.vaId, today, accessToken]);
 
   const fetchSlotData = useCallback(
     async (slot: HourSlot) => {
@@ -2436,6 +2642,15 @@ function VADetailPanel({
 
       {/* ── Performance Overview ─────────────────────────────────────── */}
       <PerformanceOverview weeklyMetrics={weeklyMetrics} loading={loadingMetrics} />
+
+      {/* ── Daily Performance Overview ───────────────────────────────── */}
+      <DailyPerformanceOverview
+        metrics={dailyPerfData?.metrics ?? null}
+        punctuality={dailyPerfData?.punctuality ?? null}
+        liveSession={dailyPerfData?.liveSession ?? null}
+        loading={loadingDailyMetrics}
+        date={today}
+      />
 
       {/* ── Role Responsibilities ────────────────────────────────────── */}
       <div className="mx-6 mb-4 border border-gray-200 rounded-xl overflow-hidden bg-white">
