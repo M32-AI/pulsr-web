@@ -2334,8 +2334,8 @@ function VADetailPanel({
     };
   }
 
-  const fetchDailySummary = useCallback(async () => {
-    setLoadingSummary(true);
+  const fetchDailySummary = useCallback(async (silent = false) => {
+    if (!silent) setLoadingSummary(true);
     try {
       const url = `${API_BASE_URL}/admin/screenshots/daily-summary?va_id=${va.vaId}&date=${today}&timezone=${encodeURIComponent(timezone)}`;
       const res = await fetch(url, {
@@ -2344,44 +2344,68 @@ function VADetailPanel({
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const json: DailySummary = await res.json();
       setDailySummary(json);
-      setSlotData({});
-      setExpandedSlot(null);
+      if (!silent) {
+        setSlotData({});
+        setExpandedSlot(null);
+      }
     } catch {
-      setDailySummary(null);
+      if (!silent) setDailySummary(null);
     } finally {
-      setLoadingSummary(false);
+      if (!silent) setLoadingSummary(false);
     }
   }, [va.vaId, today, accessToken, timezone]);
 
   useEffect(() => {
-    fetchDailySummary();
+    fetchDailySummary(false);
+    const id = setInterval(() => fetchDailySummary(true), REFRESH_INTERVAL);
+    return () => clearInterval(id);
   }, [fetchDailySummary]);
 
   const weekStart = getWeekDays(today)[0];
 
-  useEffect(() => {
+  const fetchWeeklyMetrics = useCallback(async (silent = false) => {
     if (!va.vaId || !accessToken) return;
-    setLoadingMetrics(true);
-    fetch(`${API_BASE_URL}/admin/performance?vaId=${va.vaId}&weekStart=${weekStart}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setWeeklyMetrics(data?.metrics ?? null))
-      .catch(() => setWeeklyMetrics(null))
-      .finally(() => setLoadingMetrics(false));
+    if (!silent) setLoadingMetrics(true);
+    try {
+      const r = await fetch(`${API_BASE_URL}/admin/performance?vaId=${va.vaId}&weekStart=${weekStart}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = r.ok ? await r.json() : null;
+      setWeeklyMetrics(data?.metrics ?? null);
+    } catch {
+      if (!silent) setWeeklyMetrics(null);
+    } finally {
+      if (!silent) setLoadingMetrics(false);
+    }
   }, [va.vaId, weekStart, accessToken]);
 
   useEffect(() => {
+    fetchWeeklyMetrics(false);
+    const id = setInterval(() => fetchWeeklyMetrics(true), REFRESH_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchWeeklyMetrics]);
+
+  const fetchDailyMetrics = useCallback(async (silent = false) => {
     if (!va.vaId || !accessToken) return;
-    setLoadingDailyMetrics(true);
-    fetch(`${API_BASE_URL}/admin/performance/daily?vaId=${va.vaId}&date=${today}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: DailyPerformanceResponse | null) => setDailyPerfData(data))
-      .catch(() => setDailyPerfData(null))
-      .finally(() => setLoadingDailyMetrics(false));
+    if (!silent) setLoadingDailyMetrics(true);
+    try {
+      const r = await fetch(`${API_BASE_URL}/admin/performance/daily?vaId=${va.vaId}&date=${today}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data: DailyPerformanceResponse | null = r.ok ? await r.json() : null;
+      setDailyPerfData(data);
+    } catch {
+      if (!silent) setDailyPerfData(null);
+    } finally {
+      if (!silent) setLoadingDailyMetrics(false);
+    }
   }, [va.vaId, today, accessToken]);
+
+  useEffect(() => {
+    fetchDailyMetrics(false);
+    const id = setInterval(() => fetchDailyMetrics(true), REFRESH_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchDailyMetrics]);
 
   const fetchSlotData = useCallback(
     async (slot: HourSlot) => {
@@ -2744,7 +2768,7 @@ function VADetailPanel({
             </h2>
             <button
               type="button"
-              onClick={fetchDailySummary}
+              onClick={() => fetchDailySummary(false)}
               disabled={loadingSummary}
               className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
             >
