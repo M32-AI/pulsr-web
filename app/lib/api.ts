@@ -134,6 +134,33 @@ export async function markAlertsRead(ids: string[]): Promise<void> {
   if (!res.ok) throw new Error("Failed to mark alerts read");
 }
 
+// Push notifications API
+
+export async function getVapidPublicKey(): Promise<{ publicKey: string }> {
+  const res = await apiFetch("/api/push/vapid-public-key");
+  if (!res.ok) throw new Error("Push notifications not available");
+  return res.json();
+}
+
+export async function subscribePush(subscription: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}): Promise<void> {
+  const res = await apiFetch("/api/push/subscribe", {
+    method: "POST",
+    body: JSON.stringify(subscription),
+  });
+  if (!res.ok) throw new Error("Failed to save push subscription");
+}
+
+export async function unsubscribePush(endpoint: string): Promise<void> {
+  const res = await apiFetch("/api/push/unsubscribe", {
+    method: "POST",
+    body: JSON.stringify({ endpoint }),
+  });
+  if (!res.ok) throw new Error("Failed to remove push subscription");
+}
+
 export async function sessionRestore(): Promise<SessionResult | null> {
   const res = await apiFetch("/sessions?status=active&limit=1");
   if (!res.ok) return null;

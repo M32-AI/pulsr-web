@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getAlerts, markAlertsRead, type Alert } from "../lib/api";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -51,6 +52,14 @@ function AlertIcon({ alertType }: { alertType: Alert["alertType"] }) {
   );
 }
 
+const PUSH_LABELS: Record<string, string> = {
+  loading: "...",
+  subscribed: "On",
+  unsubscribed: "Off",
+  denied: "Blocked",
+  unsupported: "",
+};
+
 export default function AlertsPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [alertList, setAlertList] = useState<Alert[]>([]);
@@ -58,6 +67,7 @@ export default function AlertsPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { state: pushState, toggle: togglePush } = usePushNotifications();
 
   const fetchAlerts = useCallback(async () => {
     try {
@@ -144,15 +154,38 @@ export default function AlertsPanel() {
             <span className="text-sm font-semibold text-gray-900">
               Alerts {alertList.length > 0 && `(${alertList.length})`}
             </span>
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
-              >
-                Mark all read
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {pushState !== "unsupported" && (
+                <button
+                  type="button"
+                  onClick={togglePush}
+                  disabled={pushState === "loading" || pushState === "denied"}
+                  title={pushState === "denied" ? "Notifications blocked in browser settings" : "Toggle push notifications"}
+                  className={`inline-flex items-center gap-1 text-[11px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    pushState === "subscribed"
+                      ? "text-green-600 hover:text-green-800"
+                      : pushState === "denied"
+                      ? "text-gray-400 cursor-not-allowed"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 01-3.46 0" />
+                  </svg>
+                  {PUSH_LABELS[pushState]}
+                </button>
+              )}
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto">
