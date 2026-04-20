@@ -107,8 +107,18 @@ export interface Alert {
   vaId: string;
   sessionId: string | null;
   screenshotId: string | null;
-  alertType: "long_break" | "high_non_work_activity" | "policy_violation" | "session_idle";
-  severity: "alert" | "warning" | "quality";
+  alertType:
+    | "long_break"
+    | "high_non_work_activity"
+    | "policy_violation"
+    | "session_idle"
+    | "inactivity"
+    | "non_work_activity"
+    | "break_overtime"
+    | "late_clock_in"
+    | "off_platform"
+    | "inappropriate_behavior";
+  severity: "alert" | "warning" | "quality" | "severe";
   message: string;
   metadata: Record<string, unknown> | null;
   isRead: boolean;
@@ -132,6 +142,33 @@ export async function markAlertsRead(ids: string[]): Promise<void> {
     body: JSON.stringify({ ids }),
   });
   if (!res.ok) throw new Error("Failed to mark alerts read");
+}
+
+// Push notifications API
+
+export async function getVapidPublicKey(): Promise<{ publicKey: string }> {
+  const res = await apiFetch("/api/push/vapid-public-key");
+  if (!res.ok) throw new Error("Push notifications not available");
+  return res.json();
+}
+
+export async function subscribePush(subscription: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}): Promise<void> {
+  const res = await apiFetch("/api/push/subscribe", {
+    method: "POST",
+    body: JSON.stringify(subscription),
+  });
+  if (!res.ok) throw new Error("Failed to save push subscription");
+}
+
+export async function unsubscribePush(endpoint: string): Promise<void> {
+  const res = await apiFetch("/api/push/unsubscribe", {
+    method: "POST",
+    body: JSON.stringify({ endpoint }),
+  });
+  if (!res.ok) throw new Error("Failed to remove push subscription");
 }
 
 export async function sessionRestore(): Promise<SessionResult | null> {
