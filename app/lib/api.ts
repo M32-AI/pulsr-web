@@ -107,8 +107,18 @@ export interface Alert {
   vaId: string;
   sessionId: string | null;
   screenshotId: string | null;
-  alertType: "long_break" | "high_non_work_activity" | "policy_violation" | "session_idle";
-  severity: "alert" | "warning" | "quality";
+  alertType:
+    | "long_break"
+    | "high_non_work_activity"
+    | "policy_violation"
+    | "session_idle"
+    | "inactivity"
+    | "non_work_activity"
+    | "break_overtime"
+    | "late_clock_in"
+    | "off_platform"
+    | "inappropriate_behavior";
+  severity: "alert" | "warning" | "quality" | "severe";
   message: string;
   metadata: Record<string, unknown> | null;
   isRead: boolean;
