@@ -1001,6 +1001,155 @@ function InviteModal({ accessToken, onClose }: { accessToken: string | null; onC
   );
 }
 
+// ── Invite New User Modal ───────────────────────────────────────────────────
+
+function InviteNewUserModal({ accessToken, onClose }: { accessToken: string | null; onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/invite/create-user`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          ...(firstName.trim() ? { firstName: firstName.trim() } : {}),
+          ...(lastName.trim() ? { lastName: lastName.trim() } : {}),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? `Server returned ${res.status}`);
+      }
+      setSuccess(email.trim());
+      setEmail("");
+      setFirstName("");
+      setLastName("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create user");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Invite New User to Pulsr</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Creates their account and sends login credentials by email</p>
+          </div>
+          <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:bg-gray-100">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+              <svg className="w-3.5 h-3.5 text-red-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+
+          {success && (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+              <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5" /></svg>
+              <p className="text-xs text-emerald-700">
+                Account created and invite sent to <span className="font-semibold">{success}</span>. They can log in with password <span className="font-mono font-semibold">#Wing@1234</span>.
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor="inv-first">
+                First Name <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                id="inv-first"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="Jane"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-300 text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor="inv-last">
+                Last Name <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                id="inv-last"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Doe"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-300 text-gray-900"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor="inv-email">
+              Email <span className="text-red-400">*</span>
+            </label>
+            <input
+              id="inv-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="jane@example.com"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 placeholder:text-gray-300 text-gray-900"
+            />
+          </div>
+
+          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5 text-xs text-gray-500 space-y-1">
+            <p>Their account will be created with the default password:</p>
+            <p className="font-mono font-semibold text-gray-700">#Wing@1234</p>
+            <p className="text-gray-400">They will receive an email with the Pulsr app download link and their login credentials.</p>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-gray-600 rounded-lg border border-gray-200 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!email.trim() || submitting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? (
+                <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />Creating…</>
+              ) : (
+                <><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></svg>Create & Invite</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Invite Section ──────────────────────────────────────────────────────────
 
 interface InviteResult {
@@ -1317,6 +1466,7 @@ function TopHeader({
   offlineCount,
   onSignOut,
   onSendInvitations,
+  onInviteNewUser,
 }: {
   supervisorName: string;
   role: string | undefined;
@@ -1325,6 +1475,7 @@ function TopHeader({
   offlineCount: number;
   onSignOut: () => void;
   onSendInvitations: () => void;
+  onInviteNewUser: () => void;
 }) {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
@@ -1370,6 +1521,27 @@ function TopHeader({
         <AlertsPanel />
 
         <div className="w-px h-4 bg-gray-200" />
+
+        {/* Invite New User */}
+        <button
+          type="button"
+          onClick={onInviteNewUser}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <line x1="19" y1="8" x2="19" y2="14" />
+            <line x1="22" y1="11" x2="16" y2="11" />
+          </svg>
+          Invite New User
+        </button>
 
         {/* Send Invitations */}
         <button
@@ -1722,22 +1894,24 @@ function HourActivityCard({
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={onToggle}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 shrink-0"
-              >
-                {isExpanded ? "HIDE" : "DETAILS"}
-                <svg
-                  className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
+              {isLoaded && screenshots.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onToggle}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 shrink-0"
                 >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
+                  {isExpanded ? "HIDE" : "DETAILS"}
+                  <svg
+                    className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             <p className="text-xs text-gray-500 mt-1 ml-6">
@@ -1747,18 +1921,18 @@ function HourActivityCard({
                   ? "Loading screenshots…"
                   : isError
                     ? (slotData!.error ?? "Failed to load screenshots.")
-                    : "Click DETAILS to load activity data."}
+                    : "Loading activity data…"}
             </p>
           </div>
 
-          {isExpanded && isLoading && (
+          {isLoading && (
             <div className="border-t border-gray-100 px-4 py-8 flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
               <p className="text-xs text-gray-400">Fetching screenshots…</p>
             </div>
           )}
 
-          {isExpanded && isError && (
+          {isError && (
             <div className="border-t border-gray-100 px-4 py-6 flex flex-col items-center justify-center gap-1">
               <p className="text-xs text-red-500 font-medium">Failed to load</p>
               <p className="text-xs text-gray-400">{slotData!.error}</p>
@@ -1838,13 +2012,6 @@ function HourActivityCard({
             </div>
           )}
 
-          {isExpanded && isLoaded && screenshots.length === 0 && (
-            <div className="border-t border-gray-100 px-4 py-6 flex items-center justify-center">
-              <p className="text-xs text-gray-400">
-                No screenshots captured in this window.
-              </p>
-            </div>
-          )}
         </div>
       </div>
 
@@ -2474,22 +2641,6 @@ function VADetailPanel({
     [va.vaId, timezone, accessToken],
   );
 
-  const handleSlotToggle = useCallback(
-    (slot: HourSlot) => {
-      setExpandedSlot((prev) => {
-        const isCollapsing = prev === slot.startHour;
-        if (!isCollapsing) {
-          const existing = slotData[slot.startHour];
-          if (!existing || existing.status === "idle") {
-            fetchSlotData(slot);
-          }
-        }
-        return isCollapsing ? null : slot.startHour;
-      });
-    },
-    [slotData, fetchSlotData],
-  );
-
   const shiftStartHour = parseShiftHour(meta?.shift_start_time);
   const shiftEndHour = parseShiftHour(meta?.shift_end_time);
   const hourSlots = useMemo(
@@ -2504,6 +2655,17 @@ function VADetailPanel({
       ),
     [dailySummary, today, shiftStartHour, shiftEndHour, timezone],
   );
+
+  useEffect(() => {
+    hourSlots.forEach((slot) => {
+      setSlotData((prev) => {
+        const existing = prev[slot.startHour];
+        if (existing && existing.status !== "idle") return prev;
+        fetchSlotData(slot);
+        return prev;
+      });
+    });
+  }, [hourSlots, fetchSlotData]);
 
   const activityLogLabel = new Date(`${today}T12:00:00`)
     .toLocaleDateString("en-US", {
@@ -2803,7 +2965,7 @@ function VADetailPanel({
                   slot={slot}
                   slotData={slotData[slot.startHour]}
                   isExpanded={expandedSlot === slot.startHour}
-                  onToggle={() => handleSlotToggle(slot)}
+                  onToggle={() => setExpandedSlot((prev) => prev === slot.startHour ? null : slot.startHour)}
                 />
               ))}
             </div>
@@ -2816,6 +2978,7 @@ function VADetailPanel({
         vaId={va.vaId}
         date={today}
         accessToken={accessToken}
+        totalWorkSeconds={dailyPerfData?.metrics.totalWorkSeconds ?? null}
       />
     </div>
   );
@@ -2837,6 +3000,7 @@ export default function VAMonitorView() {
     () => new Date().toISOString().split("T")[0],
   );
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showInviteNewUserModal, setShowInviteNewUserModal] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<"all" | "online" | "offline" | "at-risk">("all");
 
   const fetchLive = useCallback(async () => {
@@ -2961,10 +3125,14 @@ export default function VAMonitorView() {
         offlineCount={offlineCount}
         onSignOut={signOut}
         onSendInvitations={() => setShowInviteModal(true)}
+        onInviteNewUser={() => setShowInviteNewUserModal(true)}
       />
 
       {showInviteModal && (
         <InviteModal accessToken={accessToken} onClose={() => setShowInviteModal(false)} />
+      )}
+      {showInviteNewUserModal && (
+        <InviteNewUserModal accessToken={accessToken} onClose={() => setShowInviteNewUserModal(false)} />
       )}
 
       <div className="flex flex-1 overflow-hidden">

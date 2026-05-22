@@ -116,16 +116,26 @@ function renderCustomPieLabel({
   );
 }
 
+function secondsToHM(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 interface VAAnalyticsSectionProps {
   vaId: string;
   date: string;
   accessToken: string | null;
+  totalWorkSeconds?: number | null;
 }
 
 export default function VAAnalyticsSection({
   vaId,
   date,
   accessToken,
+  totalWorkSeconds,
 }: VAAnalyticsSectionProps) {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -221,28 +231,37 @@ export default function VAAnalyticsSection({
                 </Pie>
                 <Tooltip
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: any, name?: unknown) => [
-                    `${value} screenshots`,
-                    String(name ?? ""),
-                  ]}
+                  formatter={(value: any, name?: unknown) => {
+                    const cat = data?.categories.find((c) => c.category === String(name ?? ""));
+                    const pct = cat?.percentage ?? 0;
+                    const timeStr = totalWorkSeconds
+                      ? secondsToHM(Math.round((pct / 100) * totalWorkSeconds))
+                      : null;
+                    return [timeStr ?? `${value} screenshots`, String(name ?? "")];
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 justify-center">
-              {data.categories.map((c) => (
-                <div key={c.category} className="flex items-center gap-1">
-                  <span
-                    className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                    style={{ backgroundColor: categoryColor(c.category) }}
-                  />
-                  <span className="text-[10px] text-gray-500">
-                    {c.category}
-                  </span>
-                  <span className="text-[10px] text-gray-400">
-                    ({c.percentage}%)
-                  </span>
-                </div>
-              ))}
+              {data.categories.map((c) => {
+                const timeStr = totalWorkSeconds
+                  ? secondsToHM(Math.round((c.percentage / 100) * totalWorkSeconds))
+                  : null;
+                return (
+                  <div key={c.category} className="flex items-center gap-1">
+                    <span
+                      className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                      style={{ backgroundColor: categoryColor(c.category) }}
+                    />
+                    <span className="text-[10px] text-gray-500">
+                      {c.category}
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      {timeStr ? `(${timeStr})` : `(${c.percentage}%)`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
