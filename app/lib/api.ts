@@ -215,7 +215,10 @@ export async function getLowProductivityScreenshots(
 ): Promise<LowProductivityResponse> {
   const params = new URLSearchParams({ max_score: String(maxScore), offset: String(offset) });
   const res = await apiFetch(`/admin/low-productivity?${params}`);
-  if (!res.ok) throw new Error("Failed to fetch low productivity screenshots");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error ?? `Server returned ${res.status}`);
+  }
   return res.json();
 }
 
