@@ -171,6 +171,54 @@ export async function unsubscribePush(endpoint: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to remove push subscription");
 }
 
+export interface LowProductivityScreenshot {
+  id: string;
+  sessionId: string;
+  vaId: string;
+  vaEmail: string;
+  capturedAt: string;
+  category: string | null;
+  subcategory: string | null;
+  activeApplication: string | null;
+  windowTitle: string | null;
+  productivityScore: number | null;
+  confidence: number | null;
+  summary: string | null;
+  visibleTools: string[] | null;
+  flags: string[] | null;
+  containsSensitiveData: boolean | null;
+  isIdle: boolean | null;
+  s3Key: string;
+  s3Bucket: string;
+  modelUsed: string | null;
+  promptVersion: string | null;
+  presignedUrl: string | null;
+  logModel: string | null;
+  systemPrompt: string | null;
+  rawResponse: string | null;
+  logTokensUsed: number | null;
+  durationMs: number | null;
+}
+
+export interface LowProductivityResponse {
+  maxScore: number;
+  limit: number;
+  offset: number;
+  total: number;
+  hasNext: boolean;
+  screenshots: LowProductivityScreenshot[];
+}
+
+export async function getLowProductivityScreenshots(
+  maxScore = 40,
+  offset = 0
+): Promise<LowProductivityResponse> {
+  const params = new URLSearchParams({ max_score: String(maxScore), offset: String(offset) });
+  const res = await apiFetch(`/admin/low-productivity?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch low productivity screenshots");
+  return res.json();
+}
+
 export async function sessionRestore(): Promise<SessionResult | null> {
   const res = await apiFetch("/sessions?status=active&limit=1");
   if (!res.ok) return null;
