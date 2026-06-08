@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { getAlerts, markAlertsRead, type Alert } from "../lib/api";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useSoundNotifications } from "../hooks/useSoundNotifications";
@@ -188,9 +189,18 @@ export default function AlertsPanel() {
       {isOpen && (
         <div className="absolute right-0 top-8 z-50 w-96 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <span className="text-sm font-semibold text-gray-900">
-              Alerts {alertList.length > 0 && `(${alertList.length})`}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">
+                Alerts {alertList.length > 0 && `(${alertList.length})`}
+              </span>
+              <Link
+                href="/admin/alerts"
+                onClick={handleClose}
+                className="text-[11px] text-blue-600 hover:text-blue-800 font-medium transition-colors"
+              >
+                View all
+              </Link>
+            </div>
             <div className="flex items-center gap-3">
               <button
                 type="button"

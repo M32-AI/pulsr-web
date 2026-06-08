@@ -127,9 +127,10 @@ export interface Alert {
 
 export async function getAlerts(
   unreadOnly = false,
-  limit = 50
+  limit = 50,
+  offset = 0
 ): Promise<{ alerts: Alert[]; total: number; unreadCount: number }> {
-  const params = new URLSearchParams({ limit: String(limit) });
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (unreadOnly) params.set("unread_only", "true");
   const res = await apiFetch(`/api/alerts?${params}`);
   if (!res.ok) throw new Error("Failed to fetch alerts");
