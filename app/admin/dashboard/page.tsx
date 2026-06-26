@@ -2455,6 +2455,7 @@ function VADetailPanel({
   const [opsDetails, setOpsDetails] = useState<OpsDetails | null>(null);
   const [monitoringEnabled, setMonitoringEnabled] = useState(va.monitoringEnabled !== false);
   const [togglingMonitoring, setTogglingMonitoring] = useState(false);
+  const [monitoringError, setMonitoringError] = useState(false);
 
   useEffect(() => {
     if (!va.email || !accessToken) return;
@@ -2509,11 +2510,13 @@ function VADetailPanel({
     if (togglingMonitoring) return;
     const next = !monitoringEnabled;
     setTogglingMonitoring(true);
+    setMonitoringError(false);
     try {
       await setMonitoring(va.vaId, next);
       setMonitoringEnabled(next);
     } catch {
-      // revert on failure
+      setMonitoringError(true);
+      setTimeout(() => setMonitoringError(false), 3000);
     } finally {
       setTogglingMonitoring(false);
     }
@@ -2883,22 +2886,29 @@ function VADetailPanel({
               <path d="M6 9l6 6 6-6" />
             </svg>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {(role === "admin" || role === "manager") && (
-              <button
-                type="button"
-                onClick={handleToggleMonitoring}
-                disabled={togglingMonitoring}
-                title={monitoringEnabled ? "Disable monitoring" : "Enable monitoring"}
-                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
-                  monitoringEnabled
-                    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                    : "bg-gray-100 text-gray-400 hover:bg-gray-200"
-                } ${togglingMonitoring ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <span className={`w-2 h-2 rounded-full ${monitoringEnabled ? "bg-emerald-500" : "bg-gray-300"}`} />
-                {monitoringEnabled ? "Monitoring" : "Paused"}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] font-medium ${monitoringEnabled ? "text-emerald-600" : "text-gray-400"}`}>
+                  {togglingMonitoring ? "Saving…" : monitoringError ? "Failed — retry" : monitoringEnabled ? "Monitoring ON" : "Monitoring OFF"}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={monitoringEnabled}
+                  onClick={handleToggleMonitoring}
+                  disabled={togglingMonitoring}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    togglingMonitoring ? "opacity-50 cursor-not-allowed" : ""
+                  } ${monitoringError ? "bg-red-400" : monitoringEnabled ? "bg-emerald-500" : "bg-gray-300"}`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${
+                      monitoringEnabled ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
             )}
             {(role === "admin" || role === "manager" || role === "supervisor") && (
               <button
