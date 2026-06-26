@@ -7,6 +7,7 @@ import { convertShiftToLocalTime } from "../../lib/utils";
 import { timezoneToFlag, shiftStartToUTC } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
+import { getLive, setMonitoring } from "../../lib/api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -39,6 +40,7 @@ interface VASnapshot {
   todayBreakSeconds: number | null;
   idleSeconds: number;
   lastSeenAt: string | null;
+  monitoringEnabled?: boolean;
   metadata: VAMetadata | null;
 }
 
@@ -2451,6 +2453,8 @@ function VADetailPanel({
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [localJobDescription, setLocalJobDescription] = useState<string | null>(null);
   const [opsDetails, setOpsDetails] = useState<OpsDetails | null>(null);
+  const [monitoringEnabled, setMonitoringEnabled] = useState(va.monitoringEnabled !== false);
+  const [togglingMonitoring, setTogglingMonitoring] = useState(false);
 
   useEffect(() => {
     if (!va.email || !accessToken) return;
@@ -2500,6 +2504,20 @@ function VADetailPanel({
       end: meta.shift_end_time,
     };
   }
+
+  const handleToggleMonitoring = async () => {
+    if (togglingMonitoring) return;
+    const next = !monitoringEnabled;
+    setTogglingMonitoring(true);
+    try {
+      await setMonitoring(va.vaId, next);
+      setMonitoringEnabled(next);
+    } catch {
+      // revert on failure
+    } finally {
+      setTogglingMonitoring(false);
+    }
+  };
 
   const fetchDailySummary = useCallback(async (silent = false) => {
     if (!silent) setLoadingSummary(true);
@@ -2865,25 +2883,43 @@ function VADetailPanel({
               <path d="M6 9l6 6 6-6" />
             </svg>
           </div>
-          {(role === "admin" || role === "manager" || role === "supervisor") && (
-            <button
-              type="button"
-              onClick={() => setShowRoleModal(true)}
-              className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 transition-colors"
-              title="Edit role responsibilities"
-            >
-              <svg
-                className="w-3.5 h-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+          <div className="flex items-center gap-1">
+            {role === "admin" && (
+              <button
+                type="button"
+                onClick={handleToggleMonitoring}
+                disabled={togglingMonitoring}
+                title={monitoringEnabled ? "Disable monitoring" : "Enable monitoring"}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  monitoringEnabled
+                    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                } ${togglingMonitoring ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </button>
-          )}
+                <span className={`w-2 h-2 rounded-full ${monitoringEnabled ? "bg-emerald-500" : "bg-gray-300"}`} />
+                {monitoringEnabled ? "Monitoring" : "Paused"}
+              </button>
+            )}
+            {(role === "admin" || role === "manager" || role === "supervisor") && (
+              <button
+                type="button"
+                onClick={() => setShowRoleModal(true)}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 transition-colors"
+                title="Edit role responsibilities"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
         <div className="px-5 pb-4">
           <p
@@ -3005,11 +3041,7 @@ export default function VAMonitorView() {
 
   const fetchLive = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/live`, {
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const json: LiveResponse = await res.json();
+      const json: LiveResponse = await getLive();
       setData(json);
       setError(null);
     } catch (e) {
@@ -3017,7 +3049,7 @@ export default function VAMonitorView() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, []);
 
   useEffect(() => {
     fetchLive();
