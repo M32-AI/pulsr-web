@@ -2884,7 +2884,7 @@ function VADetailPanel({
             </svg>
           </div>
           <div className="flex items-center gap-1">
-            {role === "admin" && (
+            {(role === "admin" || role === "manager") && (
               <button
                 type="button"
                 onClick={handleToggleMonitoring}
