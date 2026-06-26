@@ -43,6 +43,15 @@ export async function getLive() {
   return res.json();
 }
 
+export async function setMonitoring(vaId: string, enabled: boolean) {
+  const res = await apiFetch(`/api/users/${vaId}/monitoring`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error("Failed to update monitoring setting");
+  return res.json();
+}
+
 export async function getQueueStats() {
   const res = await apiFetch("/admin/queue-stats");
   if (!res.ok) throw new Error("Failed to fetch queue stats");
