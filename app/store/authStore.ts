@@ -148,6 +148,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           await get().signOut();
         }
       } else {
+        // Sync role + assistant emails from the server — the stored copy is
+        // frozen at sign-in time and goes stale when the roster changes.
+        const user: User = { ...stored.user, ...me.user, role: me.role ?? stored.user.role };
+        const assistantEmails = me.assistant_emails ?? stored.assistantEmails ?? [];
+        saveStored({ accessToken: stored.accessToken, refreshToken: stored.refreshToken, user, assistantEmails });
+        set({ user, assistantEmails });
         scheduleProactiveRefresh(stored.accessToken, () => get().refreshSession().catch(() => {}));
       }
     } finally {

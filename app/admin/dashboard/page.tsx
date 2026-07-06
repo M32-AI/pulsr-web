@@ -3064,7 +3064,7 @@ const ALLOWED_ROLES = new Set(["admin", "supervisor", "manager"]);
 
 export default function VAMonitorView() {
   const { dark, toggle: toggleDark } = useDarkMode();
-  const { accessToken, user, assistantEmails, signOut, isLoading } = useAuthStore();
+  const { accessToken, user, signOut, isLoading } = useAuthStore();
   const role = user?.role;
   const [data, setData] = useState<LiveResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -3097,13 +3097,12 @@ export default function VAMonitorView() {
   }, [fetchLive]);
 
   const sortedVAs = useMemo(() => {
+    // /live is already filtered server-side per caller role (fresh on every
+    // request) — re-filtering with the localStorage copy of assistantEmails
+    // can only hide VAs the server intentionally returned.
     const allSnapshots = data?.snapshot ?? [];
-    const visibleSnapshots =
-      role === "admin"
-        ? allSnapshots
-        : allSnapshots.filter((va) => assistantEmails.includes(va.email));
     const q = search.trim().toLowerCase();
-    return visibleSnapshots
+    return allSnapshots
       .filter((va) => {
         if (!q) return true;
         const name = displayName(va.email, va.metadata).toLowerCase();
@@ -3120,7 +3119,7 @@ export default function VAMonitorView() {
           displayName(b.email, b.metadata),
         );
       });
-  }, [data, search, role, assistantEmails]);
+  }, [data, search]);
 
   const needsAttentionVAs = sortedVAs.filter((va) =>
     isNeedsAttention(getStatusBadge(va)),
@@ -3290,8 +3289,14 @@ export default function VAMonitorView() {
               </div>
             ) : tabVAs.length === 0 ? (
               <div className="flex items-center justify-center py-16">
-                <p className="text-sm text-gray-400">
-                  {search ? "No matching VAs found" : `No ${sidebarTab === "all" ? "" : sidebarTab + " "}VAs`}
+                <p className="text-sm text-gray-400 text-center px-4">
+                  {search
+                    ? "No matching VAs found"
+                    : sidebarTab !== "all"
+                      ? `No ${sidebarTab} VAs`
+                      : role === "admin"
+                        ? "No VAs"
+                        : "No VAs are assigned to your account"}
                 </p>
               </div>
             ) : (

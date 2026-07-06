@@ -49,12 +49,19 @@ export async function apiRefreshSession(refreshToken: string): Promise<SessionRe
   return json.data ?? json;
 }
 
-export async function apiGetMe(accessToken: string): Promise<{ id: string; email: string; name?: string } | null> {
+export interface MeResponse {
+  user: { id: string; email: string; name?: string; user_metadata?: { name?: string } };
+  role?: string;
+  assistant_emails?: string[];
+}
+
+export async function apiGetMe(accessToken: string): Promise<MeResponse | null> {
   const res = await fetch(`${API_URL}/api/auth/me`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return null;
   const json = await res.json();
   const data = json?.data ?? json;
-  return data?.user ?? null;
+  if (!data?.user) return null;
+  return { user: data.user, role: data.role, assistant_emails: data.assistant_emails };
 }
