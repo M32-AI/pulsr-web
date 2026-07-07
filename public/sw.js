@@ -33,7 +33,7 @@ self.addEventListener("notificationclick", (event) => {
           if ("focus" in client) {
             client.focus();
             if ("navigate" in client) return client.navigate(url);
-            return undefined;
+            return clients.openWindow(url);
           }
         }
         return clients.openWindow(url);

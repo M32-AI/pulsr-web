@@ -3199,12 +3199,13 @@ function VAMonitorView() {
     if (!evidenceParams || !data) return;
     const key = `${evidenceParams.va}|${evidenceParams.ts}|${evidenceParams.screenshotId ?? ""}`;
     if (appliedDeepLinkRef.current === key) return;
-    appliedDeepLinkRef.current = key;
     const target = (data.snapshot ?? []).find((v) => v.vaId === evidenceParams.va);
     if (!target) {
+      // Don't mark applied — the VA may appear in a later /live refresh.
       setRosterNotice(true);
       return;
     }
+    appliedDeepLinkRef.current = key;
     setRosterNotice(false);
     setSelectedVaId(target.vaId);
     setSelectedDate(

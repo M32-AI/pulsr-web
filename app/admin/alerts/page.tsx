@@ -327,7 +327,15 @@ export default function AlertsPage() {
                   <tr
                     key={alert.id}
                     onClick={() => handleAlertClick(alert)}
-                    className={`${!alert.isRead ? "bg-blue-50/30" : ""} hover:bg-gray-50/50 transition-colors cursor-pointer group`}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleAlertClick(alert);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className={`${!alert.isRead ? "bg-blue-50/30" : ""} hover:bg-gray-50/50 focus:bg-blue-50/50 focus:outline-none transition-colors cursor-pointer group`}
                   >
                     <td className="px-5 py-3.5">
                       <span
