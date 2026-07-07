@@ -132,6 +132,26 @@ export interface Alert {
   metadata: Record<string, unknown> | null;
   isRead: boolean;
   createdAt: string;
+  vaEmail?: string | null;
+  screenshotCapturedAt?: string | null;
+}
+
+/**
+ * Dashboard deep-link to the evidence behind an alert: the VA, the moment it
+ * happened, and (when the alert came from a specific screenshot) the image.
+ * Window-based alerts anchor on the window midpoint so the expanded hour
+ * block is the one that actually contains the evidence.
+ */
+export function alertEvidenceUrl(alert: Alert): string {
+  const windowMinutes = Number(alert.metadata?.windowMinutes ?? 0);
+  const ts =
+    alert.screenshotCapturedAt ??
+    (windowMinutes > 0
+      ? new Date(new Date(alert.createdAt).getTime() - windowMinutes * 30_000).toISOString()
+      : alert.createdAt);
+  const params = new URLSearchParams({ va: alert.vaId, ts });
+  if (alert.screenshotId) params.set("screenshot", alert.screenshotId);
+  return `/admin/dashboard?${params.toString()}`;
 }
 
 export async function getAlerts(

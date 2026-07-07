@@ -1,5 +1,5 @@
 // Maps common abbreviations to IANA timezone identifiers
-const TIMEZONE_MAP: Record<string, string> = {
+export const TIMEZONE_MAP: Record<string, string> = {
   EST: "America/New_York",
   EDT: "America/New_York",
   CST: "America/Chicago",

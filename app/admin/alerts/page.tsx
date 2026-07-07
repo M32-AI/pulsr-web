@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { getAlerts, markAlertsRead, type Alert } from "../../lib/api";
+import { useRouter } from "next/navigation";
+import { getAlerts, markAlertsRead, alertEvidenceUrl, type Alert } from "../../lib/api";
 
 const PAGE_SIZE = 50;
 
@@ -111,6 +112,7 @@ function AlertIcon({ alertType }: { alertType: Alert["alertType"] }) {
 }
 
 export default function AlertsPage() {
+  const router = useRouter();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [total, setTotal] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -149,6 +151,16 @@ export default function AlertsPage() {
     } catch {
       // silently ignore
     }
+  };
+
+  // Navigate to the evidence behind the alert and mark it read.
+  const handleAlertClick = (alert: Alert) => {
+    if (!alert.isRead) {
+      markAlertsRead([alert.id]).catch(() => {});
+      setAlerts((prev) => prev.map((a) => (a.id === alert.id ? { ...a, isRead: true } : a)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    }
+    router.push(alertEvidenceUrl(alert));
   };
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -303,16 +315,19 @@ export default function AlertsPage() {
                 <tr className="border-b border-gray-100 bg-gray-50/50">
                   <th className="px-5 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Severity</th>
                   <th className="px-5 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Type</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">VA</th>
                   <th className="px-5 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Message</th>
                   <th className="px-5 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-44">Time</th>
                   <th className="px-5 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-16">Status</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-28">Evidence</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filteredAlerts.map((alert) => (
                   <tr
                     key={alert.id}
-                    className={`${!alert.isRead ? "bg-blue-50/30" : ""} hover:bg-gray-50/50 transition-colors`}
+                    onClick={() => handleAlertClick(alert)}
+                    className={`${!alert.isRead ? "bg-blue-50/30" : ""} hover:bg-gray-50/50 transition-colors cursor-pointer group`}
                   >
                     <td className="px-5 py-3.5">
                       <span
@@ -327,6 +342,11 @@ export default function AlertsPage() {
                     <td className="px-5 py-3.5">
                       <span className="text-xs text-gray-600">
                         {ALERT_TYPE_LABELS[alert.alertType] ?? alert.alertType}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs text-gray-700 font-medium">
+                        {alert.vaEmail ?? "—"}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
@@ -347,6 +367,14 @@ export default function AlertsPage() {
                           New
                         </span>
                       )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {alert.screenshotId ? "View screenshot" : "View activity"}
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </span>
                     </td>
                   </tr>
                 ))}
