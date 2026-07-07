@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "../../store/authStore";
-import { convertShiftToLocalTime } from "../../lib/utils";
-import { timezoneToFlag, shiftStartToUTC } from "../../lib/timezone-flags";
+import { convertShiftToLocalTime, TIMEZONE_MAP } from "../../lib/utils";
+import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
 import { getLive, setMonitoring } from "../../lib/api";
@@ -285,6 +286,42 @@ function getLocalHour(utcISO: string, timezone: string): number {
     return hourPart ? parseInt(hourPart.value, 10) % 24 : d.getUTCHours();
   } catch {
     return new Date(utcISO).getHours();
+  }
+}
+
+// VA-local date (YYYY-MM-DD) and hour of a UTC instant. Prefers the fixed
+// offset table the shift helpers use — that matches how the backend
+// interprets slot start/end ranges, which is what determines which hour
+// block actually contains a screenshot. Falls back to Intl (IANA), then
+// browser-local, mirroring getLocalHour.
+function evidenceLocalParts(utcISO: string, tzAbbr: string): { date: string; hour: number } {
+  const key = tzAbbr?.trim().toUpperCase() ?? "";
+  const offset = TZ_OFFSET_MINUTES[key];
+  if (offset !== undefined) {
+    const shifted = new Date(new Date(utcISO).getTime() + offset * 60_000);
+    return { date: shifted.toISOString().slice(0, 10), hour: shifted.getUTCHours() };
+  }
+  const zone = TIMEZONE_MAP[key] ?? tzAbbr;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(utcISO));
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    return {
+      date: `${get("year")}-${get("month")}-${get("day")}`,
+      hour: parseInt(get("hour"), 10) % 24,
+    };
+  } catch {
+    const d = new Date(utcISO);
+    return {
+      date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      hour: d.getHours(),
+    };
   }
 }
 
@@ -1800,13 +1837,29 @@ function HourActivityCard({
   slotData,
   isExpanded,
   onToggle,
+  highlightScreenshotId = null,
 }: {
   slot: HourSlot;
   slotData: SlotData | undefined;
   isExpanded: boolean;
   onToggle: () => void;
+  highlightScreenshotId?: string | null;
 }) {
   const [lightbox, setLightbox] = useState<AdminScreenshot | null>(null);
+  const autoOpenedRef = useRef<string | null>(null);
+
+  // Deep-linked evidence: once this slot's screenshots load and contain the
+  // highlighted one, open it in the lightbox (once per screenshot id).
+  useEffect(() => {
+    if (!highlightScreenshotId || !isExpanded) return;
+    if (autoOpenedRef.current === highlightScreenshotId) return;
+    const match = slotData?.status === "loaded"
+      ? slotData.screenshots.find((s) => s.id === highlightScreenshotId)
+      : undefined;
+    if (!match) return;
+    autoOpenedRef.current = highlightScreenshotId;
+    setLightbox(match);
+  }, [highlightScreenshotId, isExpanded, slotData]);
 
   const riskLevel =
     slotData?.status === "loaded" ? slotData.riskLevel : "no-data";
@@ -1874,7 +1927,7 @@ function HourActivityCard({
 
   return (
     <>
-      <div className="flex gap-3">
+      <div className="flex gap-3" id={`hour-slot-${slot.startHour}`}>
         <div className="flex flex-col items-center pt-1">
           <div className={`w-2.5 h-2.5 rounded-full border-2 ${style.dot}`} />
           <div className="w-px flex-1 bg-gray-200 mt-1" />
@@ -1999,7 +2052,11 @@ function HourActivityCard({
                     key={s.id}
                     type="button"
                     onClick={() => setLightbox(s)}
-                    className="group relative rounded-lg overflow-hidden bg-gray-100 aspect-video hover:ring-2 hover:ring-blue-400 transition-all"
+                    className={`group relative rounded-lg overflow-hidden bg-gray-100 aspect-video transition-all ${
+                      s.id === highlightScreenshotId
+                        ? "ring-2 ring-red-500 ring-offset-2"
+                        : "hover:ring-2 hover:ring-blue-400"
+                    }`}
                   >
                     {s.presignedUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -2462,12 +2519,14 @@ function VADetailPanel({
   date,
   role,
   onDateChange,
+  evidence = null,
 }: {
   va: VASnapshot;
   accessToken: string | null;
   date: string;
   role: string | undefined;
   onDateChange: (date: string) => void;
+  evidence?: { ts: string; screenshotId: string | null } | null;
 }) {
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
@@ -2534,6 +2593,15 @@ function VADetailPanel({
     };
   }
 
+  // Deep-linked evidence: the hour block to auto-expand, valid only while the
+  // panel shows the evidence's date. Held in a ref so fetchDailySummary can
+  // apply it when it (re)initializes slot state — applying from a separate
+  // effect races with that reset (StrictMode's double fetch clobbers it).
+  const evidenceLocal = evidence ? evidenceLocalParts(evidence.ts, timezone) : null;
+  const evidenceHour = evidenceLocal && evidenceLocal.date === date ? evidenceLocal.hour : null;
+  const evidenceHourRef = useRef<number | null>(null);
+  evidenceHourRef.current = evidenceHour;
+
   const handleToggleMonitoring = async () => {
     if (togglingMonitoring) return;
     const next = !monitoringEnabled;
@@ -2562,7 +2630,7 @@ function VADetailPanel({
       setDailySummary(json);
       if (!silent) {
         setSlotData({});
-        setExpandedSlot(null);
+        setExpandedSlot(evidenceHourRef.current);
       }
     } catch {
       if (!silent) setDailySummary(null);
@@ -2715,6 +2783,22 @@ function VADetailPanel({
       });
     });
   }, [hourSlots, fetchSlotData]);
+
+  // Scroll to the deep-linked hour block once it exists (expansion itself is
+  // applied by fetchDailySummary via evidenceHourRef).
+  const scrolledEvidenceRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (evidenceHour === null || !evidence || loadingSummary) return;
+    const key = `${va.vaId}|${evidence.ts}|${evidence.screenshotId ?? ""}`;
+    if (scrolledEvidenceRef.current === key) return;
+    if (!hourSlots.some((s) => s.startHour === evidenceHour)) return;
+    scrolledEvidenceRef.current = key;
+    setTimeout(() => {
+      document
+        .getElementById(`hour-slot-${evidenceHour}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+  }, [evidenceHour, evidence, loadingSummary, hourSlots, va.vaId]);
 
   const activityLogLabel = new Date(`${today}T12:00:00`)
     .toLocaleDateString("en-US", {
@@ -3040,6 +3124,7 @@ function VADetailPanel({
                   slotData={slotData[slot.startHour]}
                   isExpanded={expandedSlot === slot.startHour}
                   onToggle={() => setExpandedSlot((prev) => prev === slot.startHour ? null : slot.startHour)}
+                  highlightScreenshotId={evidence?.screenshotId ?? null}
                 />
               ))}
             </div>
@@ -3062,7 +3147,7 @@ function VADetailPanel({
 
 const ALLOWED_ROLES = new Set(["admin", "supervisor", "manager"]);
 
-export default function VAMonitorView() {
+function VAMonitorView() {
   const { dark, toggle: toggleDark } = useDarkMode();
   const { accessToken, user, signOut, isLoading } = useAuthStore();
   const role = user?.role;
@@ -3077,6 +3162,17 @@ export default function VAMonitorView() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showInviteNewUserModal, setShowInviteNewUserModal] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<"all" | "online" | "offline" | "at-risk">("all");
+
+  // ── Alert evidence deep-link (?va=&ts=&screenshot=) ─────────────────────
+  const searchParams = useSearchParams();
+  const evidenceParams = useMemo(() => {
+    const va = searchParams.get("va");
+    const ts = searchParams.get("ts");
+    if (!va || !ts) return null;
+    return { va, ts, screenshotId: searchParams.get("screenshot") };
+  }, [searchParams]);
+  const [rosterNotice, setRosterNotice] = useState(false);
+  const appliedDeepLinkRef = useRef<string | null>(null);
 
   const fetchLive = useCallback(async () => {
     try {
@@ -3095,6 +3191,27 @@ export default function VAMonitorView() {
     const id = setInterval(fetchLive, REFRESH_INTERVAL);
     return () => clearInterval(id);
   }, [fetchLive]);
+
+  // Apply the deep-link once per unique alert target: select the VA and jump
+  // to the evidence date (in the VA's timezone). The detail panel handles
+  // hour-block expansion and screenshot highlighting from `evidence`.
+  useEffect(() => {
+    if (!evidenceParams || !data) return;
+    const key = `${evidenceParams.va}|${evidenceParams.ts}|${evidenceParams.screenshotId ?? ""}`;
+    if (appliedDeepLinkRef.current === key) return;
+    const target = (data.snapshot ?? []).find((v) => v.vaId === evidenceParams.va);
+    if (!target) {
+      // Don't mark applied — the VA may appear in a later /live refresh.
+      setRosterNotice(true);
+      return;
+    }
+    appliedDeepLinkRef.current = key;
+    setRosterNotice(false);
+    setSelectedVaId(target.vaId);
+    setSelectedDate(
+      evidenceLocalParts(evidenceParams.ts, target.metadata?.shift_time_zone ?? "UTC").date,
+    );
+  }, [evidenceParams, data]);
 
   const sortedVAs = useMemo(() => {
     // /live is already filtered server-side per caller role (fresh on every
@@ -3205,6 +3322,22 @@ export default function VAMonitorView() {
       )}
       {showInviteNewUserModal && (
         <InviteNewUserModal accessToken={accessToken} onClose={() => setShowInviteNewUserModal(false)} />
+      )}
+
+      {rosterNotice && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between gap-3">
+          <p className="text-xs text-amber-700">
+            The VA referenced by this alert is not in your current roster — they may have been
+            reassigned. Ask an admin if you need access.
+          </p>
+          <button
+            type="button"
+            onClick={() => setRosterNotice(false)}
+            className="text-xs font-medium text-amber-500 hover:text-amber-700 shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       <div className="flex flex-1 overflow-hidden">
@@ -3368,6 +3501,11 @@ export default function VAMonitorView() {
             date={selectedDate}
             role={role}
             onDateChange={setSelectedDate}
+            evidence={
+              evidenceParams && selectedVa.vaId === evidenceParams.va
+                ? { ts: evidenceParams.ts, screenshotId: evidenceParams.screenshotId }
+                : null
+            }
           />
         ) : (
           <div className="flex-1 flex items-center justify-center bg-gray-50">
@@ -3395,5 +3533,21 @@ export default function VAMonitorView() {
         )}
       </div>
     </div>
+  );
+}
+
+// useSearchParams (alert evidence deep-links) requires a Suspense boundary
+// so Next.js can prerender the route shell.
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-gray-50">
+          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <VAMonitorView />
+    </Suspense>
   );
 }

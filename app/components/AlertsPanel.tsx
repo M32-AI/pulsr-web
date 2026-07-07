@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { getAlerts, markAlertsRead, type Alert } from "../lib/api";
+import { useRouter } from "next/navigation";
+import { getAlerts, markAlertsRead, alertEvidenceUrl, type Alert } from "../lib/api";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useSoundNotifications } from "../hooks/useSoundNotifications";
 
@@ -96,6 +97,7 @@ const PUSH_LABELS: Record<string, string> = {
 };
 
 export default function AlertsPanel() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [alertList, setAlertList] = useState<Alert[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -167,6 +169,18 @@ export default function AlertsPanel() {
     }
   };
 
+  // Navigate to the evidence behind the alert (VA + day + hour block +
+  // screenshot when the alert is screenshot-backed) and mark it read.
+  const handleAlertClick = (alert: Alert) => {
+    if (!alert.isRead) {
+      markAlertsRead([alert.id]).catch(() => {});
+      setAlertList((prev) => prev.map((a) => (a.id === alert.id ? { ...a, isRead: true } : a)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    }
+    setIsOpen(false);
+    router.push(alertEvidenceUrl(alert));
+  };
+
   return (
     <div className="relative" ref={panelRef}>
       <button
@@ -180,7 +194,7 @@ export default function AlertsPanel() {
         </svg>
         Alerts
         {unreadCount > 0 && (
-          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">
+          <span className="flex items-center justify-center h-4 min-w-4 px-1.5 rounded-full bg-red-500 text-white text-[9px] font-semibold leading-none tabular-nums">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -263,24 +277,33 @@ export default function AlertsPanel() {
             ) : (
               <ul className="divide-y divide-gray-50">
                 {alertList.map((alert) => (
-                  <li
-                    key={alert.id}
-                    className={`px-4 py-3 flex gap-3 items-start ${!alert.isRead ? "bg-gray-50" : ""}`}
-                  >
-                    <span className={`mt-0.5 ${SEVERITY_STYLES[alert.severity]?.split(" ")[0] ?? "text-gray-500"}`}>
-                      <AlertIcon alertType={alert.alertType} />
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span
-                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${SEVERITY_STYLES[alert.severity] ?? ""}`}
-                        >
-                          {SEVERITY_LABELS[alert.severity] ?? alert.severity.toUpperCase()}
+                  <li key={alert.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleAlertClick(alert)}
+                      className={`w-full text-left px-4 py-3 flex gap-3 items-start hover:bg-blue-50/50 transition-colors group ${!alert.isRead ? "bg-gray-50" : ""}`}
+                    >
+                      <span className={`mt-0.5 ${SEVERITY_STYLES[alert.severity]?.split(" ")[0] ?? "text-gray-500"}`}>
+                        <AlertIcon alertType={alert.alertType} />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${SEVERITY_STYLES[alert.severity] ?? ""}`}
+                          >
+                            {SEVERITY_LABELS[alert.severity] ?? alert.severity.toUpperCase()}
+                          </span>
+                          <span className="text-[10px] text-gray-400">{relativeTime(alert.createdAt)}</span>
+                        </div>
+                        <p className="text-xs text-gray-700 leading-snug">{alert.message}</p>
+                        <span className="inline-flex items-center gap-0.5 mt-1 text-[10px] font-semibold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                          View evidence
+                          <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
                         </span>
-                        <span className="text-[10px] text-gray-400">{relativeTime(alert.createdAt)}</span>
                       </div>
-                      <p className="text-xs text-gray-700 leading-snug">{alert.message}</p>
-                    </div>
+                    </button>
                   </li>
                 ))}
               </ul>
