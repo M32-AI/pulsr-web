@@ -4,7 +4,11 @@
   "downloads": {
     "macos": {
       "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations-1.0.8-arm64.dmg",
-      "arch": "Apple Silicon"
+      "arch": "Apple Silicon (M1 or later)"
+    },
+    "macosIntel": {
+      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations-1.0.8.dmg",
+      "arch": "Intel"
     },
     "windows": {
       "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations%20Setup%201.0.8.exe",
