@@ -8,7 +8,7 @@ import { convertShiftToLocalTime, TIMEZONE_MAP } from "../../lib/utils";
 import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
-import { getLive, setMonitoring } from "../../lib/api";
+import { getLive, setMonitoring, getDailyAttendance } from "../../lib/api";
 import { useDarkMode } from "../../lib/useDarkMode";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -44,6 +44,10 @@ interface VASnapshot {
   lastSeenAt: string | null;
   monitoringEnabled?: boolean;
   metadata: VAMetadata | null;
+  // Set client-side from /admin/reports/daily-attendance (PRODUCT-18698) —
+  // true when the VA's shift has started today and they have no tracker
+  // session at all. Not on the API response itself.
+  isAbsentToday?: boolean;
 }
 
 interface LiveResponse {
@@ -246,6 +250,12 @@ function getStatusBadge(va: VASnapshot): { label: string; className: string } {
     ? (va.todayWorkSeconds ?? 0 - va.idleSeconds) / (va.todayWorkSeconds ?? 0)
     : (va.todayBreakSeconds ?? 0 - va.idleSeconds) / (va.todayBreakSeconds ?? 0)
 
+  // Shift started, zero tracker activity today, and not currently mid-session
+  // (that combination can't coexist with isAbsentToday, but check status too
+  // for safety against stale attendance-report data on a slower poll cycle).
+  if (va.isAbsentToday && va.status !== "active") {
+    return { label: "Absent", className: "bg-red-500 text-white" };
+  }
   if (va.status === "idle") {
     return { label: "Offline", className: "bg-gray-100 text-gray-500" };
   }
@@ -464,8 +474,25 @@ function computeStartDiff(va: VASnapshot): number | null {
   return Math.round((actualStart.getTime() - shiftDate.getTime()) / 60000);
 }
 
+// Gate for "Absent" (PRODUCT-18698): the attendance report judges a whole
+// calendar date and doesn't know what time it is right now, so a VA whose
+// shift hasn't started yet would otherwise show absent from midnight.
+//
+// shiftStartToUTC silently treats an unrecognized tz abbreviation as UTC+0,
+// which would compute a wrong (but plausible-looking) start time — verified
+// against real GV data that this happens (PRODUCT-18698: "CDMX" was missing
+// from TZ_OFFSET_MINUTES until this ticket). Fail closed instead: an
+// unmapped zone never flags absent rather than risking a wrong flag on a
+// real person.
+function shiftHasStarted(va: VASnapshot): boolean {
+  if (!va.metadata?.shift_start_time) return false;
+  const tzAbbr = va.metadata.shift_time_zone?.trim().toUpperCase() ?? "";
+  if (!(tzAbbr in TZ_OFFSET_MINUTES)) return false;
+  return shiftStartToUTC(va.metadata.shift_start_time, tzAbbr).getTime() <= Date.now();
+}
+
 function isNeedsAttention(badge: { label: string }): boolean {
-  return ["Intervention", "At Risk", "Attention"].includes(badge.label);
+  return ["Intervention", "At Risk", "Attention", "Absent"].includes(badge.label);
 }
 
 const STATUS_ORDER: Record<VAStatus, number> = {
@@ -3174,6 +3201,12 @@ function VAMonitorView() {
   const [rosterNotice, setRosterNotice] = useState(false);
   const appliedDeepLinkRef = useRef<string | null>(null);
 
+  // Emails flagged "absent" (shift on record, zero tracker sessions today) by
+  // the fleet attendance report (PRODUCT-18698). Merged onto snapshot rows
+  // client-side so the At Risk tab can surface no-shows, not just low
+  // productivity on VAs who did track.
+  const [absentEmails, setAbsentEmails] = useState<Set<string>>(new Set());
+
   const fetchLive = useCallback(async () => {
     try {
       const json: LiveResponse = await getLive();
@@ -3185,6 +3218,28 @@ function VAMonitorView() {
       setLoading(false);
     }
   }, []);
+
+  const fetchAttendance = useCallback(async () => {
+    try {
+      const report = await getDailyAttendance();
+      setAbsentEmails(
+        new Set(
+          report.vas
+            .filter((r) => r.flags.includes("absent"))
+            .map((r) => r.email.toLowerCase()),
+        ),
+      );
+    } catch {
+      // Non-critical for the live roster view — leave the previous set in
+      // place rather than blanking the At Risk tab on a transient failure.
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAttendance();
+    const id = setInterval(fetchAttendance, REFRESH_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchAttendance]);
 
   useEffect(() => {
     fetchLive();
@@ -3217,7 +3272,12 @@ function VAMonitorView() {
     // /live is already filtered server-side per caller role (fresh on every
     // request) — re-filtering with the localStorage copy of assistantEmails
     // can only hide VAs the server intentionally returned.
-    const allSnapshots = data?.snapshot ?? [];
+    const rawSnapshots = data?.snapshot ?? [];
+    const allSnapshots: VASnapshot[] = rawSnapshots.map((va) =>
+      absentEmails.has(va.email.toLowerCase()) && shiftHasStarted(va)
+        ? { ...va, isAbsentToday: true }
+        : va,
+    );
     const q = search.trim().toLowerCase();
     return allSnapshots
       .filter((va) => {
@@ -3236,7 +3296,7 @@ function VAMonitorView() {
           displayName(b.email, b.metadata),
         );
       });
-  }, [data, search]);
+  }, [data, search, absentEmails]);
 
   const needsAttentionVAs = sortedVAs.filter((va) =>
     isNeedsAttention(getStatusBadge(va)),
