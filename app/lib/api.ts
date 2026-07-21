@@ -52,6 +52,32 @@ export async function setMonitoring(vaId: string, enabled: boolean) {
   return res.json();
 }
 
+export interface DailyAttendanceRow {
+  vaId: string;
+  email: string;
+  name: string | null;
+  hasShift: boolean;
+  flags: ("absent" | "late_start" | "early_end" | "overtime")[];
+}
+
+export interface DailyAttendanceResponse {
+  date: string;
+  summary: {
+    totalVAs: number;
+    withShiftOnRecord: number;
+    tracked: number;
+    absent: number;
+    lateStart: number;
+  };
+  vas: DailyAttendanceRow[];
+}
+
+export async function getDailyAttendance(date?: string): Promise<DailyAttendanceResponse> {
+  const res = await apiFetch(`/admin/reports/daily-attendance${date ? `?date=${date}` : ""}`);
+  if (!res.ok) throw new Error("Failed to fetch daily attendance report");
+  return res.json();
+}
+
 export async function getQueueStats() {
   const res = await apiFetch("/admin/queue-stats");
   if (!res.ok) throw new Error("Failed to fetch queue stats");
