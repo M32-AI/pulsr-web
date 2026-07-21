@@ -477,9 +477,17 @@ function computeStartDiff(va: VASnapshot): number | null {
 // Gate for "Absent" (PRODUCT-18698): the attendance report judges a whole
 // calendar date and doesn't know what time it is right now, so a VA whose
 // shift hasn't started yet would otherwise show absent from midnight.
+//
+// shiftStartToUTC silently treats an unrecognized tz abbreviation as UTC+0,
+// which would compute a wrong (but plausible-looking) start time — verified
+// against real GV data that this happens (PRODUCT-18698: "CDMX" was missing
+// from TZ_OFFSET_MINUTES until this ticket). Fail closed instead: an
+// unmapped zone never flags absent rather than risking a wrong flag on a
+// real person.
 function shiftHasStarted(va: VASnapshot): boolean {
   if (!va.metadata?.shift_start_time) return false;
-  const tzAbbr = va.metadata.shift_time_zone ?? "UTC";
+  const tzAbbr = va.metadata.shift_time_zone?.trim().toUpperCase() ?? "";
+  if (!(tzAbbr in TZ_OFFSET_MINUTES)) return false;
   return shiftStartToUTC(va.metadata.shift_start_time, tzAbbr).getTime() <= Date.now();
 }
 

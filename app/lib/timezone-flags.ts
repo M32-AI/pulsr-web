@@ -247,6 +247,11 @@ export const TZ_OFFSET_MINUTES: Record<string, number> = {
   // Chile
   CLT: -240,  // UTC-4
 
+  // Mexico (GV stores Mexico City shifts as "CDMX", not a real tz
+  // abbreviation — verified against real shift rows, PRODUCT-18698. No DST
+  // since Mexico's 2022 reform, so a fixed offset is safe.)
+  CDMX: -360, // UTC-6
+
   // Australia
   AEST: 600,  // UTC+10
   AEDT: 660,  // UTC+11
