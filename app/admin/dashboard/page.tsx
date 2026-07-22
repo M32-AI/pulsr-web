@@ -504,6 +504,30 @@ const STATUS_ORDER: Record<VAStatus, number> = {
 const REFRESH_INTERVAL = 30_000;
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// ── Slot fetch limiter (PRODUCT-24410) ──────────────────────────────────────
+// The activity log fired every hour block's fetch simultaneously — 11+
+// parallel request chains per VA click on top of the panel's other calls.
+// Bursts that outrun the backend's shared DB connection headroom get rejected
+// at the pooler in one instant (verified against prod: 8 of 17 parallel
+// requests 500'd in one trial, every one of them 200s when re-hit alone), and
+// a failed block stayed red forever because nothing ever retried it. Cap the
+// fan-out; transient failures are retried once in fetchSlotData below.
+const SLOT_FETCH_CONCURRENCY = 4;
+let activeSlotFetches = 0;
+const slotFetchWaiters: (() => void)[] = [];
+async function acquireSlotFetchToken(): Promise<void> {
+  if (activeSlotFetches < SLOT_FETCH_CONCURRENCY) {
+    activeSlotFetches++;
+    return;
+  }
+  await new Promise<void>((resolve) => slotFetchWaiters.push(resolve));
+  activeSlotFetches++;
+}
+function releaseSlotFetchToken(): void {
+  activeSlotFetches--;
+  slotFetchWaiters.shift()?.();
+}
+
 // ── Week Date Picker ────────────────────────────────────────────────────────
 
 function getWeekDays(dateStr: string): string[] {
@@ -2718,8 +2742,17 @@ function VADetailPanel({
     return () => clearInterval(id);
   }, [fetchDailyMetrics]);
 
+  // Identity of the (VA, date, timezone) the panel is currently showing.
+  // Slot fetches can sit in the limiter queue for a while; a fetch dispatched
+  // for the PREVIOUS VA/date must not write its result into the CURRENT
+  // panel's slot state (slotData is keyed only by hour). The pre-limiter code
+  // had this race too — queueing just widens the window, so guard it.
+  const slotEpochRef = useRef("");
+  slotEpochRef.current = `${va.vaId}|${date}|${timezone}`;
+
   const fetchSlotData = useCallback(
     async (slot: HourSlot) => {
+      const epoch = slotEpochRef.current;
       setSlotData((prev) => ({
         ...prev,
         [slot.startHour]: {
@@ -2731,55 +2764,75 @@ function VADetailPanel({
           summaryText: "",
         },
       }));
+      await acquireSlotFetchToken();
       try {
-        const params = new URLSearchParams({
-          va_id: va.vaId,
-          start: slot.startISO,
-          end: slot.endISO,
-          timezone,
-          limit: "100",
-        });
-        const allScreenshots: AdminScreenshot[] = [];
-        let offset = 0;
-        let hasMore = true;
-        while (hasMore) {
-          params.set("offset", offset.toString());
-          const res = await fetch(
-            `${API_BASE_URL}/admin/screenshots?${params}`,
-            {
-              headers: accessToken
-                ? { Authorization: `Bearer ${accessToken}` }
-                : {},
-            },
-          );
-          if (!res.ok) throw new Error(`Server returned ${res.status}`);
-          const json: AdminScreenshotsResponse = await res.json();
-          allScreenshots.push(...json.screenshots);
-          hasMore = json.hasNext;
-          offset += json.screenshots.length;
+        // Dequeued after the panel moved on (VA/date switch): don't waste the
+        // request, and definitely don't write stale rows into the new view.
+        if (slotEpochRef.current !== epoch) return;
+        // One retry: the dominant failure mode is a transient burst-overload
+        // rejection (PRODUCT-24410), which succeeds moments later.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const params = new URLSearchParams({
+              va_id: va.vaId,
+              start: slot.startISO,
+              end: slot.endISO,
+              timezone,
+              limit: "100",
+            });
+            const allScreenshots: AdminScreenshot[] = [];
+            let offset = 0;
+            let hasMore = true;
+            while (hasMore) {
+              params.set("offset", offset.toString());
+              const res = await fetch(
+                `${API_BASE_URL}/admin/screenshots?${params}`,
+                {
+                  headers: accessToken
+                    ? { Authorization: `Bearer ${accessToken}` }
+                    : {},
+                },
+              );
+              if (!res.ok) throw new Error(`Server returned ${res.status}`);
+              const json: AdminScreenshotsResponse = await res.json();
+              allScreenshots.push(...json.screenshots);
+              hasMore = json.hasNext;
+              offset += json.screenshots.length;
+            }
+            const risk = computeSlotRisk(allScreenshots);
+            if (slotEpochRef.current !== epoch) return;
+            setSlotData((prev) => ({
+              ...prev,
+              [slot.startHour]: {
+                status: "loaded",
+                screenshots: allScreenshots,
+                ...risk,
+              },
+            }));
+            break;
+          } catch (e) {
+            if (slotEpochRef.current !== epoch) return;
+            if (attempt === 0) {
+              await new Promise((r) => setTimeout(r, 600));
+              continue;
+            }
+            setSlotData((prev) => ({
+              ...prev,
+              [slot.startHour]: {
+                status: "error",
+                screenshots: [],
+                avgProductivity: null,
+                riskLevel: "no-data",
+                riskLabel: "Error",
+                summaryText: "",
+                error: e instanceof Error ? e.message : "Unknown error",
+              },
+            }));
+            break;
+          }
         }
-        const risk = computeSlotRisk(allScreenshots);
-        setSlotData((prev) => ({
-          ...prev,
-          [slot.startHour]: {
-            status: "loaded",
-            screenshots: allScreenshots,
-            ...risk,
-          },
-        }));
-      } catch (e) {
-        setSlotData((prev) => ({
-          ...prev,
-          [slot.startHour]: {
-            status: "error",
-            screenshots: [],
-            avgProductivity: null,
-            riskLevel: "no-data",
-            riskLabel: "Error",
-            summaryText: "",
-            error: e instanceof Error ? e.message : "Unknown error",
-          },
-        }));
+      } finally {
+        releaseSlotFetchToken();
       }
     },
     [va.vaId, timezone, accessToken],
