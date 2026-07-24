@@ -1,17 +1,17 @@
 {
-  "version": "1.1.4",
-  "releaseDate": "2026-07-08",
+  "version": "1.1.6",
+  "releaseDate": "2026-07-24",
   "downloads": {
     "macos": {
-      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations-1.1.4-arm64.dmg",
+      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations-1.1.6-arm64.dmg",
       "arch": "Apple Silicon (M1 or later)"
     },
     "macosIntel": {
-      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations-1.1.4.dmg",
+      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations-1.1.6.dmg",
       "arch": "Intel"
     },
     "windows": {
-      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations%20Setup%201.1.4.exe",
+      "url": "https://pulsr-app.sgp1.cdn.digitaloceanspaces.com/pulsr-app/releases/Wing%20Operations%20Setup%201.1.6.exe",
       "arch": "Windows x64"
     },
     "linux": {
