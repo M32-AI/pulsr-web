@@ -432,8 +432,13 @@ function computeHourSlots(
     const endDateStr =
       nextH >= 24
         ? (() => {
-            const d = new Date(`${date}T00:00:00`);
-            d.setDate(d.getDate() + 1);
+            // Parse, advance, and format all in UTC. Doing setDate() on a
+            // locally-parsed date and then toISOString() rolls the day BACK for
+            // viewers east of UTC, so the 11 PM slot's end lands on the same day
+            // as its start → backend 400 "start must be before end"
+            // (PRODUCT-25743).
+            const d = new Date(`${date}T00:00:00Z`);
+            d.setUTCDate(d.getUTCDate() + 1);
             return d.toISOString().split("T")[0];
           })()
         : date;
