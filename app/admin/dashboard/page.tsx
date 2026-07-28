@@ -1911,6 +1911,14 @@ function HourActivityCard({
   // Deep-linked evidence: once this slot's screenshots load and contain the
   // highlighted one, open it in the lightbox (once per screenshot id).
   useEffect(() => {
+    // Guard the STATE, not just the overlay: a role that may not view
+    // screenshots must never hold one in state, so it cannot reappear if the
+    // permission flips back. Clearing on !showScreenshots also drops anything
+    // opened before a role change.
+    if (!showScreenshots) {
+      setLightbox(null);
+      return;
+    }
     if (!highlightScreenshotId || !isExpanded) return;
     if (autoOpenedRef.current === highlightScreenshotId) return;
     const match = slotData?.status === "loaded"
@@ -1919,7 +1927,7 @@ function HourActivityCard({
     if (!match) return;
     autoOpenedRef.current = highlightScreenshotId;
     setLightbox(match);
-  }, [highlightScreenshotId, isExpanded, slotData]);
+  }, [highlightScreenshotId, isExpanded, slotData, showScreenshots]);
 
   const riskLevel =
     slotData?.status === "loaded" ? slotData.riskLevel : "no-data";
@@ -2106,13 +2114,6 @@ function HourActivityCard({
                 )}
               </div>
 
-              {!showScreenshots ? (
-                <div className="rounded-lg border border-dashed border-gray-200 dark:border-zinc-700 px-3 py-4 text-center">
-                  <p className="text-[11px] text-gray-500 dark:text-zinc-400">
-                    Activity summary only — this hour&apos;s productivity is shown above.
-                  </p>
-                </div>
-              ) : (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {screenshots.map((s) => (
                   <button
@@ -2163,7 +2164,6 @@ function HourActivityCard({
                   </button>
                 ))}
               </div>
-              )}
             </div>
           )}
 
