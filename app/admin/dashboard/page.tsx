@@ -10,6 +10,7 @@ import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
 import { getLive, setMonitoring, getDailyAttendance } from "../../lib/api";
 import { useDarkMode } from "../../lib/useDarkMode";
+import { canViewScreenshots } from "../../lib/permissions";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -1903,6 +1904,9 @@ function HourActivityCard({
 }) {
   const [lightbox, setLightbox] = useState<AdminScreenshot | null>(null);
   const autoOpenedRef = useRef<string | null>(null);
+  // Supervisors get the activity signal for this hour (score, categories) but
+  // never the screenshots themselves (PRODUCT-25750). The API refuses them too.
+  const showScreenshots = canViewScreenshots(useAuthStore((s) => s.user?.role));
 
   // Deep-linked evidence: once this slot's screenshots load and contain the
   // highlighted one, open it in the lightbox (once per screenshot id).
@@ -2102,6 +2106,13 @@ function HourActivityCard({
                 )}
               </div>
 
+              {!showScreenshots ? (
+                <div className="rounded-lg border border-dashed border-gray-200 dark:border-zinc-700 px-3 py-4 text-center">
+                  <p className="text-[11px] text-gray-500 dark:text-zinc-400">
+                    Activity summary only — this hour&apos;s productivity is shown above.
+                  </p>
+                </div>
+              ) : (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {screenshots.map((s) => (
                   <button
@@ -2152,13 +2163,14 @@ function HourActivityCard({
                   </button>
                 ))}
               </div>
+              )}
             </div>
           )}
 
         </div>
       </div>
 
-      {lightbox && (
+      {showScreenshots && lightbox && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setLightbox(null)}
