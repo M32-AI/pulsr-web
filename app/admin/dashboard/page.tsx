@@ -10,6 +10,7 @@ import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
 import { getLive, setMonitoring, getDailyAttendance } from "../../lib/api";
 import { useDarkMode } from "../../lib/useDarkMode";
+import { canViewScreenshots } from "../../lib/permissions";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -1903,10 +1904,18 @@ function HourActivityCard({
 }) {
   const [lightbox, setLightbox] = useState<AdminScreenshot | null>(null);
   const autoOpenedRef = useRef<string | null>(null);
+  // Supervisors get the activity signal for this hour (score, categories) but
+  // never the screenshots themselves (PRODUCT-25750). The API refuses them too.
+  const showScreenshots = canViewScreenshots(useAuthStore((s) => s.user?.role));
 
   // Deep-linked evidence: once this slot's screenshots load and contain the
   // highlighted one, open it in the lightbox (once per screenshot id).
   useEffect(() => {
+    // Never CREATE lightbox state for a role that may not view screenshots —
+    // guarding only the JSX would leave a screenshot sitting in state. Anything
+    // opened before a role change is dropped by the derived value below rather
+    // than by clearing state here (setState in an effect cascades renders).
+    if (!showScreenshots) return;
     if (!highlightScreenshotId || !isExpanded) return;
     if (autoOpenedRef.current === highlightScreenshotId) return;
     const match = slotData?.status === "loaded"
@@ -1915,7 +1924,7 @@ function HourActivityCard({
     if (!match) return;
     autoOpenedRef.current = highlightScreenshotId;
     setLightbox(match);
-  }, [highlightScreenshotId, isExpanded, slotData]);
+  }, [highlightScreenshotId, isExpanded, slotData, showScreenshots]);
 
   const riskLevel =
     slotData?.status === "loaded" ? slotData.riskLevel : "no-data";
@@ -2158,7 +2167,7 @@ function HourActivityCard({
         </div>
       </div>
 
-      {lightbox && (
+      {showScreenshots && lightbox && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setLightbox(null)}

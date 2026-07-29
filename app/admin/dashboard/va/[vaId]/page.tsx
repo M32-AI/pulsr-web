@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getActivity, getScreenshots, getCategoryAnalytics } from "../../../../lib/api";
+import { useAuthStore } from "../../../../store/authStore";
+import { canViewScreenshots } from "../../../../lib/permissions";
 
 type Tab = "activity" | "screenshots" | "analytics";
 
@@ -633,10 +635,14 @@ function AnalyticsTab({ vaId }: { vaId: string }) {
 export default function VADetailPage({ params }: { params: Promise<{ vaId: string }> }) {
   const { vaId } = use(params);
   const [tab, setTab] = useState<Tab>("activity");
+  // Supervisors never see screenshots (PRODUCT-25750) — the tab is removed, and
+  // the panel below is guarded too so state can't land on it another way. The
+  // API refuses them independently.
+  const showScreenshots = canViewScreenshots(useAuthStore((s) => s.user?.role));
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "activity", label: "Activity" },
-    { id: "screenshots", label: "Screenshots" },
+    ...(showScreenshots ? [{ id: "screenshots" as const, label: "Screenshots" }] : []),
     { id: "analytics", label: "Analytics" },
   ];
 
@@ -673,7 +679,7 @@ export default function VADetailPage({ params }: { params: Promise<{ vaId: strin
         </div>
 
         {tab === "activity" && <ActivityTab vaId={vaId} />}
-        {tab === "screenshots" && <ScreenshotsTab vaId={vaId} />}
+        {tab === "screenshots" && showScreenshots && <ScreenshotsTab vaId={vaId} />}
         {tab === "analytics" && <AnalyticsTab vaId={vaId} />}
       </main>
     </div>
