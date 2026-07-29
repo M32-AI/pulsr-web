@@ -1911,14 +1911,11 @@ function HourActivityCard({
   // Deep-linked evidence: once this slot's screenshots load and contain the
   // highlighted one, open it in the lightbox (once per screenshot id).
   useEffect(() => {
-    // Guard the STATE, not just the overlay: a role that may not view
-    // screenshots must never hold one in state, so it cannot reappear if the
-    // permission flips back. Clearing on !showScreenshots also drops anything
-    // opened before a role change.
-    if (!showScreenshots) {
-      setLightbox(null);
-      return;
-    }
+    // Never CREATE lightbox state for a role that may not view screenshots —
+    // guarding only the JSX would leave a screenshot sitting in state. Anything
+    // opened before a role change is dropped by the derived value below rather
+    // than by clearing state here (setState in an effect cascades renders).
+    if (!showScreenshots) return;
     if (!highlightScreenshotId || !isExpanded) return;
     if (autoOpenedRef.current === highlightScreenshotId) return;
     const match = slotData?.status === "loaded"
