@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "../../store/authStore";
-import { convertShiftToLocalTime, TIMEZONE_MAP } from "../../lib/utils";
+import { convertShiftToLocalTime, TIMEZONE_MAP, localDateInShiftTZ } from "../../lib/utils";
 import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
@@ -762,16 +762,20 @@ function DailyPerformanceOverview({
   liveSession,
   loading,
   date,
+  isTodayView,
 }: {
   metrics: DailyPerformanceMetrics | null;
   punctuality: DailyPunctuality | null;
   liveSession: DailyLiveSession | null;
   loading: boolean;
   date: string;
+  isTodayView: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
 
-  const isToday = date === new Date().toISOString().split("T")[0];
+  // Provided by the parent from the VA's LOCAL today (not a UTC comparison), so
+  // the LIVE badge shows for VAs ahead of UTC in their morning (PRODUCT-26048).
+  const isToday = isTodayView;
   const isLive = liveSession?.status === "active";
 
   const punctualityDisplay = () => {
@@ -2623,8 +2627,21 @@ function VADetailPanel({
   const name = displayName(va.email, meta);
   const badge = getStatusBadge(va);
   const score = getRiskScore(va);
-  const today = date;
   const timezone = meta?.shift_time_zone ?? "UTC";
+  // When the shared date selector is on "today" (which defaults to the UTC
+  // calendar day), resolve it to the VA's LOCAL today so a session running on
+  // their local day isn't dropped by a UTC/local mismatch — the "0 hours today
+  // during an active session" bug for VAs ahead of UTC (PRODUCT-26048). A
+  // specific picked date passes through unchanged. Drives every per-VA fetch
+  // below (hours, screenshots, activity), so the whole panel stays on one day.
+  const today =
+    date === new Date().toISOString().split("T")[0]
+      ? localDateInShiftTZ(timezone)
+      : date;
+  // True when the panel is showing the VA's CURRENT local day. Drives the LIVE
+  // badge — must be derived from the VA's local today, not the UTC date, or a VA
+  // ahead of UTC loses the badge in their morning (PRODUCT-26048).
+  const isTodayView = today === localDateInShiftTZ(timezone);
   const avatarBg = getAvatarColor(name);
   const initials = getInitials(name);
   const needsAttn = isNeedsAttention(badge);
@@ -2762,7 +2779,10 @@ function VADetailPanel({
   // panel's slot state (slotData is keyed only by hour). The pre-limiter code
   // had this race too — queueing just widens the window, so guard it.
   const slotEpochRef = useRef("");
-  slotEpochRef.current = `${va.vaId}|${date}|${timezone}`;
+  // Key the staleness epoch on the RESOLVED `today` (the date the fetches
+  // actually use), not the shared UTC `date` — otherwise a slot request from
+  // before local midnight could be accepted into the new day (PRODUCT-26048).
+  slotEpochRef.current = `${va.vaId}|${today}|${timezone}`;
 
   const fetchSlotData = useCallback(
     async (slot: HourSlot) => {
@@ -3063,6 +3083,7 @@ function VADetailPanel({
         liveSession={dailyPerfData?.liveSession ?? null}
         loading={loadingDailyMetrics}
         date={today}
+        isTodayView={isTodayView}
       />
 
       {/* ── Role Responsibilities ────────────────────────────────────── */}
