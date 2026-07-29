@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "../../store/authStore";
-import { convertShiftToLocalTime, TIMEZONE_MAP } from "../../lib/utils";
+import { convertShiftToLocalTime, TIMEZONE_MAP, localDateInShiftTZ } from "../../lib/utils";
 import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
@@ -2623,8 +2623,17 @@ function VADetailPanel({
   const name = displayName(va.email, meta);
   const badge = getStatusBadge(va);
   const score = getRiskScore(va);
-  const today = date;
   const timezone = meta?.shift_time_zone ?? "UTC";
+  // When the shared date selector is on "today" (which defaults to the UTC
+  // calendar day), resolve it to the VA's LOCAL today so a session running on
+  // their local day isn't dropped by a UTC/local mismatch — the "0 hours today
+  // during an active session" bug for VAs ahead of UTC (PRODUCT-26048). A
+  // specific picked date passes through unchanged. Drives every per-VA fetch
+  // below (hours, screenshots, activity), so the whole panel stays on one day.
+  const today =
+    date === new Date().toISOString().split("T")[0]
+      ? localDateInShiftTZ(timezone)
+      : date;
   const avatarBg = getAvatarColor(name);
   const initials = getInitials(name);
   const needsAttn = isNeedsAttention(badge);

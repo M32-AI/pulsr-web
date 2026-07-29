@@ -1,4 +1,8 @@
-// Maps common abbreviations to IANA timezone identifiers
+// Maps common abbreviations to IANA timezone identifiers.
+// Kept in sync with the backend's ABBREVIATION_TO_IANA (pulsr-backend
+// lib/timezone.ts), which is the source of truth. PHT/PHST (Philippines) are
+// the important ones here — most VAs are Manila, and without them the frontend
+// fell back to UTC and reported 0 hours during their morning (PRODUCT-26048).
 export const TIMEZONE_MAP: Record<string, string> = {
   EST: "America/New_York",
   EDT: "America/New_York",
@@ -8,12 +12,45 @@ export const TIMEZONE_MAP: Record<string, string> = {
   MDT: "America/Denver",
   PST: "America/Los_Angeles",
   PDT: "America/Los_Angeles",
+  CDMX: "America/Mexico_City",
   UTC: "UTC",
-  GMT: "GMT",
-  IST: "Asia/Kolkata",
+  GMT: "Etc/GMT",
+  BST: "Europe/London",
   CET: "Europe/Paris",
+  CEST: "Europe/Paris",
+  EET: "Europe/Helsinki",
+  EEST: "Europe/Helsinki",
+  IST: "Asia/Kolkata",
   JST: "Asia/Tokyo",
+  SGT: "Asia/Singapore",
+  PKT: "Asia/Karachi",
+  BDT: "Asia/Dhaka",
+  GST: "Asia/Dubai",
+  PHT: "Asia/Manila",
+  PHST: "Asia/Manila",
+  AEST: "Australia/Sydney",
+  AEDT: "Australia/Sydney",
 };
+
+/**
+ * Today's date (YYYY-MM-DD) in the VA's shift timezone, so "today" means the
+ * VA's local day rather than the viewer's UTC day. Accepts an abbreviation
+ * ("PHT") or a raw IANA zone ("Asia/Manila"); unknown values fall back to the
+ * UTC date (no worse than before). Fix for HOURS TODAY reading 0 for VAs ahead
+ * of UTC (PRODUCT-26048).
+ */
+export function localDateInShiftTZ(
+  shiftTimeZone: string | null | undefined,
+  when: Date = new Date(),
+): string {
+  const raw = (shiftTimeZone ?? "").trim();
+  const iana = TIMEZONE_MAP[raw.toUpperCase()] ?? raw;
+  try {
+    return when.toLocaleDateString("en-CA", { timeZone: iana || "UTC" });
+  } catch {
+    return when.toISOString().slice(0, 10);
+  }
+}
 
 interface ShiftTiming {
   shift_end_time: string;
