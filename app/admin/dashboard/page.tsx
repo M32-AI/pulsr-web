@@ -286,18 +286,12 @@ function getRiskScore(va: VASnapshot): number {
 }
 
 function getLocalHour(utcISO: string, timezone: string): number {
-  try {
-    const d = new Date(utcISO);
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      hour: "2-digit",
-      hour12: false,
-    }).formatToParts(d);
-    const hourPart = parts.find((p) => p.type === "hour");
-    return hourPart ? parseInt(hourPart.value, 10) % 24 : d.getUTCHours();
-  } catch {
-    return new Date(utcISO).getHours();
-  }
+  // Delegate to evidenceLocalParts so both hour computations always agree AND a
+  // GV abbreviation like PHT/PHST resolves through the fixed-offset table first.
+  // Passing the raw abbreviation straight to Intl (as this did) throws for PHT,
+  // so it silently fell back to the *viewer's* local hour → wrong hour blocks /
+  // screenshot buckets for PH VAs (PRODUCT-26051).
+  return evidenceLocalParts(utcISO, timezone).hour;
 }
 
 // VA-local date (YYYY-MM-DD) and hour of a UTC instant. Prefers the fixed
