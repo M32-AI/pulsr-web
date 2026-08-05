@@ -181,7 +181,13 @@ interface AssignedClient {
 }
 
 interface OpsDetails {
-  user: Record<string, unknown> & { staff_id?: string | number };
+  user: Record<string, unknown>;
+  // Top-level (not user.staff_id): the ops user's own Global View staff_id,
+  // resolved server-side. 0/unmapped comes back as null. (PRODUCT-25072)
+  staff_id?: string | number | null;
+  // The VA's supervisor, resolved by id server-side. null when unmapped.
+  // (PRODUCT-25073)
+  supervisor?: { name: string; email: string | null } | null;
   assigned_clients: AssignedClient[];
 }
 
@@ -2978,6 +2984,24 @@ function VADetailPanel({
                       ? "Suspended"
                       : "Offline"}
                 </span>
+                {opsDetails?.supervisor?.name && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600"
+                    title={opsDetails.supervisor.email ?? undefined}
+                  >
+                    <svg
+                      className="w-3 h-3"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    {opsDetails.supervisor.name}
+                  </span>
+                )}
                 {needsAttn && (
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${badge.className}`}
@@ -3019,23 +3043,48 @@ function VADetailPanel({
                 </svg>
                 Create Hubspot Ticket
               </button>
-              <Link
-                href={`https://employee.getwingapp.com/staffing-resource/viewprofile/${opsDetails?.user?.staff_id ?? ""}`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                <svg
-                  className="w-3.5 h-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
+              {opsDetails?.staff_id ? (
+                <Link
+                  href={`https://employee.getwingapp.com/staffing-resource/viewprofile/${opsDetails.staff_id}`}
+                  target="_blank"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
                 >
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                Global View
-              </Link>
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  Global View
+                </Link>
+              ) : (
+                // No Global View profile is linked to this VA (no staff_id from
+                // ops-details). Render a disabled control instead of a <Link> to
+                // `/viewprofile/` with an empty id, which navigated nowhere
+                // (PRODUCT-25072).
+                <button
+                  type="button"
+                  disabled
+                  title="No Global View profile is linked to this VA"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-300 cursor-not-allowed"
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  Global View
+                </button>
+              )}
             </div>
 
             {clientSchedule && (
