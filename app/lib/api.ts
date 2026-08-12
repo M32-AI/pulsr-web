@@ -217,14 +217,25 @@ export function alertEvidenceUrl(alert: Alert): string {
 export async function getAlerts(
   unreadOnly = false,
   limit = 50,
-  offset = 0
+  offset = 0,
+  /**
+   * Restrict to specific alert types. Needed to find a rare type reliably:
+   * prod writes thousands of productivity alerts, so the newest N alerts can
+   * span only a few hours and an older poaching alert would never appear
+   * (PRODUCT-24383).
+   */
+  alertTypes?: Alert["alertType"][]
 ): Promise<{ alerts: Alert[]; total: number; unreadCount: number }> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (unreadOnly) params.set("unread_only", "true");
+  if (alertTypes?.length) params.set("alert_type", alertTypes.join(","));
   const res = await apiFetch(`/api/alerts?${params}`);
   if (!res.ok) throw new Error("Failed to fetch alerts");
   return res.json();
 }
+
+/** Both alert types that represent poaching risk (PRODUCT-24383). */
+export const POACHING_ALERT_TYPES: Alert["alertType"][] = ["poaching", "off_platform"];
 
 export async function markAlertsRead(ids: string[]): Promise<void> {
   const res = await apiFetch("/api/alerts/mark-read", {

@@ -376,22 +376,25 @@ export default function AlertsPage() {
                       <p className="text-xs text-gray-700 leading-snug max-w-xl">{alert.message}</p>
                       {/* The lines that triggered a poaching flag, so the
                           reviewer knows what to look for before opening the
-                          evidence (PRODUCT-24383). Absent for supervisors,
-                          who never see screenshot-derived content. */}
-                      {isPoachingAlert(alert) && poachingQuotes(alert).length > 0 && (
-                        <div className="mt-1.5 max-w-xl border-l-2 border-red-300 pl-2.5">
-                          {poachingDirection(alert) && (
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-red-700 mb-0.5">
-                              {POACHING_DIRECTION_LABELS[poachingDirection(alert)!]}
-                            </p>
-                          )}
-                          {poachingQuotes(alert).map((q, i) => (
-                            <p key={i} className="text-[11px] italic text-red-900 leading-snug">
-                              &ldquo;{q}&rdquo;
-                            </p>
-                          ))}
-                        </div>
-                      )}
+                          evidence (PRODUCT-24383). Quotes are absent for
+                          supervisors, who never see screenshot-derived content,
+                          and can be missing if the model returned none — the
+                          direction is still worth showing on its own. */}
+                      {isPoachingAlert(alert) &&
+                        (poachingQuotes(alert).length > 0 || poachingDirection(alert)) && (
+                          <div className="mt-1.5 max-w-xl border-l-2 border-red-300 pl-2.5">
+                            {poachingDirection(alert) && (
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-red-700 mb-0.5">
+                                {POACHING_DIRECTION_LABELS[poachingDirection(alert)!]}
+                              </p>
+                            )}
+                            {poachingQuotes(alert).map((q, i) => (
+                              <p key={i} className="text-[11px] italic text-red-900 leading-snug">
+                                &ldquo;{q}&rdquo;
+                              </p>
+                            ))}
+                          </div>
+                        )}
                     </td>
                     <td className="px-5 py-3.5">
                       <div>

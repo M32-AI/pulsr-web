@@ -9,7 +9,7 @@ import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/ti
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
 import DesktopAlertsPrompt from "../../components/DesktopAlertsPrompt";
-import { getLive, setMonitoring, getDailyAttendance, getAlerts, isPoachingAlert } from "../../lib/api";
+import { getLive, setMonitoring, getDailyAttendance, getAlerts, POACHING_ALERT_TYPES } from "../../lib/api";
 import { useDarkMode } from "../../lib/useDarkMode";
 import { canViewScreenshots } from "../../lib/permissions";
 
@@ -3393,17 +3393,16 @@ function VAMonitorView() {
 
   const fetchPoachingRisk = useCallback(async () => {
     try {
-      const { alerts } = await getAlerts(false, 100);
+      // Ask the server for unread poaching alerts specifically. Scanning a page
+      // of ALL alerts would miss them: prod writes thousands of productivity
+      // alerts, so the newest 100 can span only a few hours and a poaching
+      // alert older than that would silently never badge the VA.
+      const { alerts } = await getAlerts(true, 100, 0, POACHING_ALERT_TYPES);
       const cutoff = Date.now() - POACHING_BADGE_WINDOW_MS;
       setPoachingVaIds(
         new Set(
           alerts
-            .filter(
-              (a) =>
-                isPoachingAlert(a) &&
-                !a.isRead &&
-                new Date(a.createdAt).getTime() >= cutoff,
-            )
+            .filter((a) => new Date(a.createdAt).getTime() >= cutoff)
             .map((a) => a.vaId),
         ),
       );
