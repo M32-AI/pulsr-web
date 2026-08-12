@@ -8,7 +8,8 @@ import { convertShiftToLocalTime, TIMEZONE_MAP, localDateInShiftTZ } from "../..
 import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
-import { getLive, setMonitoring, getDailyAttendance } from "../../lib/api";
+import DesktopAlertsPrompt from "../../components/DesktopAlertsPrompt";
+import { getLive, setMonitoring, getDailyAttendance, getAlerts, isPoachingAlert } from "../../lib/api";
 import { useDarkMode } from "../../lib/useDarkMode";
 import { canViewScreenshots } from "../../lib/permissions";
 
@@ -49,6 +50,10 @@ interface VASnapshot {
   // true when the VA's shift has started today and they have no tracker
   // session at all. Not on the API response itself.
   isAbsentToday?: boolean;
+  // Set client-side from /api/alerts (PRODUCT-24383) — true when the VA has an
+  // open poaching alert today. Serene asked for poaching to show up as at-risk
+  // behaviour, and /live carries no alert data of its own.
+  hasPoachingRisk?: boolean;
 }
 
 interface LiveResponse {
@@ -256,6 +261,14 @@ function getStatusBadge(va: VASnapshot): { label: string; className: string } {
   const productivity = va.sessionType === 'work'
     ? (va.todayWorkSeconds ?? 0 - va.idleSeconds) / (va.todayWorkSeconds ?? 0)
     : (va.todayBreakSeconds ?? 0 - va.idleSeconds) / (va.todayBreakSeconds ?? 0)
+
+  // Poaching outranks every other badge: it is the only "severe" signal here
+  // and it needs looking at whether or not the VA is currently productive
+  // (PRODUCT-24383). A poaching risk on a high-scoring VA is the dangerous case,
+  // and productivity-based badges would hide exactly that one.
+  if (va.hasPoachingRisk) {
+    return { label: "Poaching Risk", className: "bg-red-700 text-white" };
+  }
 
   // Shift started, zero tracker activity today, and not currently mid-session
   // (that combination can't coexist with isAbsentToday, but check status too
@@ -498,7 +511,7 @@ function shiftHasStarted(va: VASnapshot): boolean {
 }
 
 function isNeedsAttention(badge: { label: string }): boolean {
-  return ["Intervention", "At Risk", "Attention", "Absent"].includes(badge.label);
+  return ["Poaching Risk", "Intervention", "At Risk", "Attention", "Absent"].includes(badge.label);
 }
 
 const STATUS_ORDER: Record<VAStatus, number> = {
@@ -508,6 +521,13 @@ const STATUS_ORDER: Record<VAStatus, number> = {
 };
 
 const REFRESH_INTERVAL = 30_000;
+
+/**
+ * How long a poaching alert keeps the VA badged on the roster (PRODUCT-24383).
+ * Reading the alert clears the badge, so this is only the ceiling for one that
+ * nobody has opened yet.
+ */
+const POACHING_BADGE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // ── Slot fetch limiter (PRODUCT-24410) ──────────────────────────────────────
@@ -3338,6 +3358,11 @@ function VAMonitorView() {
   // productivity on VAs who did track.
   const [absentEmails, setAbsentEmails] = useState<Set<string>>(new Set());
 
+  // VA ids with an unread poaching alert in the last 24h (PRODUCT-24383). /live
+  // has no alert data, so the roster learns about poaching the same way it
+  // learns about absences: a separate poll merged onto the snapshot rows.
+  const [poachingVaIds, setPoachingVaIds] = useState<Set<string>>(new Set());
+
   const fetchLive = useCallback(async () => {
     try {
       const json: LiveResponse = await getLive();
@@ -3366,11 +3391,39 @@ function VAMonitorView() {
     }
   }, []);
 
+  const fetchPoachingRisk = useCallback(async () => {
+    try {
+      const { alerts } = await getAlerts(false, 100);
+      const cutoff = Date.now() - POACHING_BADGE_WINDOW_MS;
+      setPoachingVaIds(
+        new Set(
+          alerts
+            .filter(
+              (a) =>
+                isPoachingAlert(a) &&
+                !a.isRead &&
+                new Date(a.createdAt).getTime() >= cutoff,
+            )
+            .map((a) => a.vaId),
+        ),
+      );
+    } catch {
+      // Non-critical for the roster — keep the previous set rather than
+      // dropping the badge on a transient failure.
+    }
+  }, []);
+
   useEffect(() => {
     fetchAttendance();
     const id = setInterval(fetchAttendance, REFRESH_INTERVAL);
     return () => clearInterval(id);
   }, [fetchAttendance]);
+
+  useEffect(() => {
+    fetchPoachingRisk();
+    const id = setInterval(fetchPoachingRisk, REFRESH_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchPoachingRisk]);
 
   useEffect(() => {
     fetchLive();
@@ -3404,11 +3457,13 @@ function VAMonitorView() {
     // request) — re-filtering with the localStorage copy of assistantEmails
     // can only hide VAs the server intentionally returned.
     const rawSnapshots = data?.snapshot ?? [];
-    const allSnapshots: VASnapshot[] = rawSnapshots.map((va) =>
-      absentEmails.has(va.email.toLowerCase()) && shiftHasStarted(va)
-        ? { ...va, isAbsentToday: true }
-        : va,
-    );
+    const allSnapshots: VASnapshot[] = rawSnapshots.map((va) => {
+      const merged =
+        absentEmails.has(va.email.toLowerCase()) && shiftHasStarted(va)
+          ? { ...va, isAbsentToday: true }
+          : va;
+      return poachingVaIds.has(va.vaId) ? { ...merged, hasPoachingRisk: true } : merged;
+    });
     const q = search.trim().toLowerCase();
     return allSnapshots
       .filter((va) => {
@@ -3427,7 +3482,7 @@ function VAMonitorView() {
           displayName(b.email, b.metadata),
         );
       });
-  }, [data, search, absentEmails]);
+  }, [data, search, absentEmails, poachingVaIds]);
 
   const needsAttentionVAs = sortedVAs.filter((va) =>
     isNeedsAttention(getStatusBadge(va)),
@@ -3514,6 +3569,8 @@ function VAMonitorView() {
       {showInviteNewUserModal && (
         <InviteNewUserModal accessToken={accessToken} onClose={() => setShowInviteNewUserModal(false)} />
       )}
+
+      <DesktopAlertsPrompt />
 
       {rosterNotice && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between gap-3">

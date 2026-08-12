@@ -151,8 +151,10 @@ export interface Alert {
     | "non_work_activity"
     | "break_overtime"
     | "late_clock_in"
+    // Written before PRODUCT-24383; new detections use "poaching".
     | "off_platform"
-    | "inappropriate_behavior";
+    | "inappropriate_behavior"
+    | "poaching";
   severity: "alert" | "warning" | "quality" | "severe";
   message: string;
   metadata: Record<string, unknown> | null;
@@ -161,6 +163,38 @@ export interface Alert {
   vaEmail?: string | null;
   screenshotCapturedAt?: string | null;
 }
+
+/** Both the current and the legacy type for the same risk (PRODUCT-24383). */
+export function isPoachingAlert(alert: Pick<Alert, "alertType">): boolean {
+  return alert.alertType === "poaching" || alert.alertType === "off_platform";
+}
+
+/**
+ * The verbatim lines that triggered a poaching alert, when the caller is allowed
+ * to see them. `/api/alerts` strips these for supervisors, who must never be
+ * shown screenshot-derived content (PRODUCT-25750), so an empty list here just
+ * means "not available to you" — never "no evidence".
+ */
+export function poachingQuotes(alert: Alert): string[] {
+  const quotes = alert.metadata?.quotes;
+  return Array.isArray(quotes) ? quotes.filter((q): q is string => typeof q === "string") : [];
+}
+
+export type PoachingDirection = "client_to_va" | "va_to_client" | "mutual" | "unclear";
+
+export function poachingDirection(alert: Alert): PoachingDirection | null {
+  const d = alert.metadata?.direction;
+  return d === "client_to_va" || d === "va_to_client" || d === "mutual" || d === "unclear"
+    ? d
+    : null;
+}
+
+export const POACHING_DIRECTION_LABELS: Record<PoachingDirection, string> = {
+  client_to_va: "Client → VA",
+  va_to_client: "VA → client",
+  mutual: "Both sides",
+  unclear: "Direction unclear",
+};
 
 /**
  * Dashboard deep-link to the evidence behind an alert: the VA, the moment it

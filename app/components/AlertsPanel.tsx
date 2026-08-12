@@ -3,7 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getAlerts, markAlertsRead, alertEvidenceUrl, type Alert } from "../lib/api";
+import {
+  getAlerts,
+  markAlertsRead,
+  alertEvidenceUrl,
+  isPoachingAlert,
+  poachingQuotes,
+  type Alert,
+} from "../lib/api";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useSoundNotifications } from "../hooks/useSoundNotifications";
 
@@ -32,7 +39,12 @@ const SEVERITY_LABELS: Record<string, string> = {
 };
 
 function AlertIcon({ alertType }: { alertType: Alert["alertType"] }) {
-  if (alertType === "policy_violation" || alertType === "off_platform" || alertType === "inappropriate_behavior") {
+  if (
+    alertType === "policy_violation" ||
+    alertType === "off_platform" ||
+    alertType === "poaching" ||
+    alertType === "inappropriate_behavior"
+  ) {
     return (
       <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -296,6 +308,14 @@ export default function AlertsPanel() {
                           <span className="text-[10px] text-gray-400">{relativeTime(alert.createdAt)}</span>
                         </div>
                         <p className="text-xs text-gray-700 leading-snug">{alert.message}</p>
+                        {/* One quoted line is enough here to tell the moments
+                            in a burst apart; the full list is on the alerts
+                            page (PRODUCT-24383). */}
+                        {isPoachingAlert(alert) && poachingQuotes(alert)[0] && (
+                          <p className="mt-1 border-l-2 border-red-300 pl-2 text-[11px] italic text-red-900 leading-snug">
+                            &ldquo;{poachingQuotes(alert)[0]}&rdquo;
+                          </p>
+                        )}
                         <span className="inline-flex items-center gap-0.5 mt-1 text-[10px] font-semibold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
                           View evidence
                           <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
