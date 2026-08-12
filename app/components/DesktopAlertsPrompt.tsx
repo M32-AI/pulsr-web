@@ -70,9 +70,16 @@ export default function DesktopAlertsPrompt() {
           type="button"
           onClick={async () => {
             await toggle();
-            // Don't ask again either way: if the browser prompt was denied,
-            // re-nudging cannot help — the toggle in the Alerts panel remains.
-            setDismissedInStorage();
+            // Only stop asking when asking again cannot help. A blocked
+            // permission is final, so dismiss. A success needs no dismissal —
+            // the banner hides itself once the state is no longer
+            // "unsubscribed". Anything else (offline, VAPID fetch failed) left
+            // the user unsubscribed for a transient reason, and permanently
+            // hiding the nudge there is how people end up silently receiving
+            // no alerts — the exact failure this banner exists to prevent.
+            if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+              setDismissedInStorage();
+            }
           }}
           className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
         >
