@@ -3,7 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getAlerts, markAlertsRead, alertEvidenceUrl, type Alert } from "../lib/api";
+import {
+  getAlerts,
+  markAlertsRead,
+  alertEvidenceUrl,
+  isPoachingAlert,
+  poachingQuotes,
+  sendTestPush,
+  type Alert,
+} from "../lib/api";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useSoundNotifications } from "../hooks/useSoundNotifications";
 
@@ -32,7 +40,12 @@ const SEVERITY_LABELS: Record<string, string> = {
 };
 
 function AlertIcon({ alertType }: { alertType: Alert["alertType"] }) {
-  if (alertType === "policy_violation" || alertType === "off_platform" || alertType === "inappropriate_behavior") {
+  if (
+    alertType === "policy_violation" ||
+    alertType === "off_platform" ||
+    alertType === "poaching" ||
+    alertType === "inappropriate_behavior"
+  ) {
     return (
       <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -106,6 +119,11 @@ export default function AlertsPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { state: pushState, toggle: togglePush } = usePushNotifications();
+  // Result of the last "Test" click, shown inline (PRODUCT-24383). A silent
+  // failure is the whole problem being solved here, so the outcome is always
+  // reported — including how many devices it actually reached.
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useSoundNotifications(unreadCount, alertList, soundMuted);
 
@@ -154,6 +172,28 @@ export default function AlertsPanel() {
       } catch {
         // silently ignore
       }
+    }
+  };
+
+  const handleTestPush = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await sendTestPush();
+      if (r.sent > 0) {
+        setTestResult(`Sent to ${r.sent} device${r.sent === 1 ? "" : "s"} — check your desktop`);
+      } else if (r.total === 0) {
+        setTestResult("No devices registered — turn alerts on first");
+      } else if (r.expired > 0) {
+        // Self-healed: the stale subscription is gone, so re-enabling will work.
+        setTestResult("Your registration had expired — turn alerts off and on again");
+      } else {
+        setTestResult(r.error ? `Failed: ${r.error.slice(0, 60)}` : "Failed to deliver");
+      }
+    } catch (err) {
+      setTestResult(err instanceof Error ? err.message.slice(0, 70) : "Failed to send");
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -257,6 +297,17 @@ export default function AlertsPanel() {
                   {PUSH_LABELS[pushState]}
                 </button>
               )}
+              {pushState === "subscribed" && (
+                <button
+                  type="button"
+                  onClick={handleTestPush}
+                  disabled={testing}
+                  title="Send a test notification to this device"
+                  className="text-[11px] font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+                >
+                  {testing ? "Sending…" : "Test"}
+                </button>
+              )}
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -268,6 +319,19 @@ export default function AlertsPanel() {
               )}
             </div>
           </div>
+
+          {testResult && (
+            <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-gray-600">{testResult}</p>
+              <button
+                type="button"
+                onClick={() => setTestResult(null)}
+                className="text-[11px] text-gray-400 hover:text-gray-600 shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           <div className="max-h-96 overflow-y-auto">
             {isLoading ? (
@@ -296,6 +360,14 @@ export default function AlertsPanel() {
                           <span className="text-[10px] text-gray-400">{relativeTime(alert.createdAt)}</span>
                         </div>
                         <p className="text-xs text-gray-700 leading-snug">{alert.message}</p>
+                        {/* One quoted line is enough here to tell the moments
+                            in a burst apart; the full list is on the alerts
+                            page (PRODUCT-24383). */}
+                        {isPoachingAlert(alert) && poachingQuotes(alert)[0] && (
+                          <p className="mt-1 border-l-2 border-red-300 pl-2 text-[11px] italic text-red-900 leading-snug">
+                            &ldquo;{poachingQuotes(alert)[0]}&rdquo;
+                          </p>
+                        )}
                         <span className="inline-flex items-center gap-0.5 mt-1 text-[10px] font-semibold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
                           View evidence
                           <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
