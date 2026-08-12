@@ -9,6 +9,7 @@ import {
   alertEvidenceUrl,
   isPoachingAlert,
   poachingQuotes,
+  sendTestPush,
   type Alert,
 } from "../lib/api";
 import { usePushNotifications } from "../hooks/usePushNotifications";
@@ -118,6 +119,11 @@ export default function AlertsPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { state: pushState, toggle: togglePush } = usePushNotifications();
+  // Result of the last "Test" click, shown inline (PRODUCT-24383). A silent
+  // failure is the whole problem being solved here, so the outcome is always
+  // reported — including how many devices it actually reached.
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useSoundNotifications(unreadCount, alertList, soundMuted);
 
@@ -166,6 +172,28 @@ export default function AlertsPanel() {
       } catch {
         // silently ignore
       }
+    }
+  };
+
+  const handleTestPush = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await sendTestPush();
+      if (r.sent > 0) {
+        setTestResult(`Sent to ${r.sent} device${r.sent === 1 ? "" : "s"} — check your desktop`);
+      } else if (r.total === 0) {
+        setTestResult("No devices registered — turn alerts on first");
+      } else if (r.expired > 0) {
+        // Self-healed: the stale subscription is gone, so re-enabling will work.
+        setTestResult("Your registration had expired — turn alerts off and on again");
+      } else {
+        setTestResult(r.error ? `Failed: ${r.error.slice(0, 60)}` : "Failed to deliver");
+      }
+    } catch (err) {
+      setTestResult(err instanceof Error ? err.message.slice(0, 70) : "Failed to send");
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -269,6 +297,17 @@ export default function AlertsPanel() {
                   {PUSH_LABELS[pushState]}
                 </button>
               )}
+              {pushState === "subscribed" && (
+                <button
+                  type="button"
+                  onClick={handleTestPush}
+                  disabled={testing}
+                  title="Send a test notification to this device"
+                  className="text-[11px] font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+                >
+                  {testing ? "Sending…" : "Test"}
+                </button>
+              )}
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -280,6 +319,19 @@ export default function AlertsPanel() {
               )}
             </div>
           </div>
+
+          {testResult && (
+            <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-gray-600">{testResult}</p>
+              <button
+                type="button"
+                onClick={() => setTestResult(null)}
+                className="text-[11px] text-gray-400 hover:text-gray-600 shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           <div className="max-h-96 overflow-y-auto">
             {isLoading ? (

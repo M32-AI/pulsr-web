@@ -253,6 +253,28 @@ export async function subscribePush(subscription: {
   if (!res.ok) throw new Error("Failed to save push subscription");
 }
 
+export interface PushTestResult {
+  /** Subscriptions the server tried. 0 = desktop alerts are not enabled anywhere. */
+  total: number;
+  sent: number;
+  failed: number;
+  /** Subscriptions the push service rejected as gone; the server deleted them. */
+  expired: number;
+  error?: string;
+}
+
+/**
+ * Ask the server to push a test notification to this user's own devices
+ * (PRODUCT-24383) — proves VAPID config, the stored subscription, the push
+ * service, the service worker, and the click-through all work.
+ */
+export async function sendTestPush(): Promise<PushTestResult> {
+  const res = await apiFetch("/api/push/test", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error ?? "Failed to send test notification");
+  return data;
+}
+
 export async function unsubscribePush(endpoint: string): Promise<void> {
   const res = await apiFetch("/api/push/unsubscribe", {
     method: "POST",
