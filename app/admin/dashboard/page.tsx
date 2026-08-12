@@ -8,7 +8,13 @@ import { convertShiftToLocalTime, TIMEZONE_MAP, localDateInShiftTZ } from "../..
 import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/timezone-flags";
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
-import { getLive, setMonitoring, getDailyAttendance } from "../../lib/api";
+import BreakAnalyticsPanel from "../../components/BreakAnalyticsPanel";
+import {
+  getLive,
+  setMonitoring,
+  getDailyAttendance,
+  type DailyAttendanceRow,
+} from "../../lib/api";
 import { useDarkMode } from "../../lib/useDarkMode";
 import { canViewScreenshots } from "../../lib/permissions";
 
@@ -49,6 +55,11 @@ interface VASnapshot {
   // true when the VA's shift has started today and they have no tracker
   // session at all. Not on the API response itself.
   isAbsentToday?: boolean;
+  // Today's row from the same attendance report (PRODUCT-20332): the VA's
+  // actual first start / last end and how they compare with the shift on
+  // record. /live only knows about the session running right now, so the
+  // roster learns the day's real bounds from this merge.
+  attendance?: DailyAttendanceRow | null;
 }
 
 interface LiveResponse {
@@ -472,14 +483,6 @@ function formatISOTime(isoStr: string | null | undefined): string {
   });
 }
 
-function computeStartDiff(va: VASnapshot): number | null {
-  if (!va.startTime || !va.metadata?.shift_start_time) return null;
-  const tzAbbr = va.metadata.shift_time_zone ?? "UTC";
-  const shiftDate = shiftStartToUTC(va.metadata.shift_start_time, tzAbbr);
-  const actualStart = new Date(va.startTime);
-  return Math.round((actualStart.getTime() - shiftDate.getTime()) / 60000);
-}
-
 // Gate for "Absent" (PRODUCT-18698): the attendance report judges a whole
 // calendar date and doesn't know what time it is right now, so a VA whose
 // shift hasn't started yet would otherwise show absent from midnight.
@@ -495,6 +498,45 @@ function shiftHasStarted(va: VASnapshot): boolean {
   const tzAbbr = va.metadata.shift_time_zone?.trim().toUpperCase() ?? "";
   if (!(tzAbbr in TZ_OFFSET_MINUTES)) return false;
   return shiftStartToUTC(va.metadata.shift_start_time, tzAbbr).getTime() <= Date.now();
+}
+
+/**
+ * The instant today's shift is scheduled to END, or null when it can't be
+ * computed safely. Overnight shifts (end <= start) roll onto the next day.
+ *
+ * Fails closed on an unmapped timezone abbreviation for the same reason
+ * `shiftHasStarted` does: shiftStartToUTC would silently assume UTC+0 and
+ * produce a wrong-but-plausible time, which here would mean flagging a real
+ * person for leaving early when they did not.
+ */
+function shiftEndInstant(va: VASnapshot): Date | null {
+  const { shift_start_time: start, shift_end_time: end } = va.metadata ?? {};
+  if (!start || !end) return null;
+  const tzAbbr = va.metadata?.shift_time_zone?.trim().toUpperCase() ?? "";
+  if (!(tzAbbr in TZ_OFFSET_MINUTES)) return null;
+
+  const startMs = shiftStartToUTC(start, tzAbbr).getTime();
+  const endMs = shiftStartToUTC(end, tzAbbr).getTime();
+  return new Date(endMs <= startMs ? endMs + 86_400_000 : endMs);
+}
+
+/** True once today's scheduled shift end has passed in the VA's timezone. */
+function shiftHasEnded(va: VASnapshot): boolean {
+  const end = shiftEndInstant(va);
+  return end !== null && end.getTime() <= Date.now();
+}
+
+/**
+ * A timestamp as the viewer's local wall clock, in the same 24h format
+ * `convertShiftToLocalTime` renders scheduled times in — the actual and the
+ * scheduled time sit next to each other, so they must be in one zone and one
+ * format or the comparison reads as wrong (PRODUCT-20332).
+ */
+function formatLocalClock(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function isNeedsAttention(badge: { label: string }): boolean {
@@ -1758,24 +1800,43 @@ function VACard({
   const score = getRiskScore(va);
   const avatarBg = getAvatarColor(name);
   const initials = getInitials(name);
-  const diffMin = computeStartDiff(va);
   const needsAttn = isNeedsAttention(badge);
 
   const shiftStart = meta?.shift_start_time ?? "";
   const shiftEnd = meta?.shift_end_time ?? "";
   const shiftTZ = meta?.shift_time_zone ?? "";
 
-  let endTimeDisplay = "--";
-  let startTimeDisplay = "--";
+  let scheduledEnd = "--";
+  let scheduledStart = "--";
   if (shiftEnd && shiftStart && shiftTZ) {
       const local = convertShiftToLocalTime({
         shift_start_time: shiftStart,
         shift_end_time: shiftEnd,
         shift_time_zone: shiftTZ,
       });
-      endTimeDisplay = local.localEndTime;
-      startTimeDisplay = local.localStartTime;
+      scheduledEnd = local.localEndTime;
+      scheduledStart = local.localStartTime;
   }
+
+  // PRODUCT-20332: show what actually happened today against what was
+  // scheduled. The actual bounds are the whole day's first start and last end
+  // (from the attendance report) — `va.startTime` is only the session running
+  // right now, which is not the same thing after a break.
+  //
+  // Nothing is flagged before it can be judged: a shift that has not ended yet
+  // cannot be an early finish, and a VA still working past their end time is
+  // in overtime, not leaving early.
+  const attendance = va.attendance;
+  const actualStart = formatLocalClock(
+    attendance?.compliance?.actualStart ?? attendance?.firstSessionStart,
+  );
+  const startIsLate = Boolean(actualStart) && (attendance?.flags.includes("late_start") ?? false);
+
+  const shiftIsOver = shiftHasEnded(va) && va.status !== "active";
+  const actualEnd = shiftIsOver
+    ? formatLocalClock(attendance?.compliance?.actualEnd ?? attendance?.lastSessionEnd)
+    : null;
+  const endIsEarly = Boolean(actualEnd) && (attendance?.flags.includes("early_end") ?? false);
 
   return (
     <button
@@ -1855,25 +1916,16 @@ function VACard({
         </div>
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Start</p>
-          <p className="text-gray-700 font-medium">{startTimeDisplay}</p>
-          {/* //TODO: Add back in when we have the API to get the diffMin */}
-          {/* {diffMin !== null && diffMin > 5 && (
-            <p className="text-red-500 font-semibold text-[9px]">
-              Late +{diffMin}m
-            </p>
+          <p
+            className={`font-medium ${startIsLate ? "text-red-500" : "text-gray-700"}`}
+            title={startIsLate ? "Started after the scheduled shift start" : undefined}
+          >
+            {actualStart ?? "--"}
+            {startIsLate && " ⚠️"}
+          </p>
+          {scheduledStart !== "--" && (
+            <p className="text-[9px] text-gray-400">Sched {scheduledStart}</p>
           )}
-          {diffMin !== null && diffMin < -5 && (
-            <p className="text-emerald-500 font-semibold text-[9px]">
-              Early {Math.abs(diffMin)}m
-            </p>
-          )}
-          {diffMin !== null &&
-            Math.abs(diffMin) <= 5 &&
-            va.status === "active" && (
-              <p className="text-emerald-500 font-semibold text-[9px]">
-                On Time
-              </p>
-            )} */}
         </div>
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Break</p>
@@ -1883,8 +1935,16 @@ function VACard({
         </div>
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Ends</p>
-          <p className="text-gray-700 font-medium">{endTimeDisplay}</p>
-          {/* <p className="text-red-500 font-medium">{va.lastSeenAt ? formatISOTime(va.lastSeenAt) : "--"}</p> */}
+          <p
+            className={`font-medium ${endIsEarly ? "text-red-500" : "text-gray-700"}`}
+            title={endIsEarly ? "Stopped before the scheduled shift end" : undefined}
+          >
+            {actualEnd ?? "--"}
+            {endIsEarly && " ⚠️"}
+          </p>
+          {scheduledEnd !== "--" && (
+            <p className="text-[9px] text-gray-400">Sched {scheduledEnd}</p>
+          )}
         </div>
       </div>
     </button>
@@ -3129,6 +3189,9 @@ function VADetailPanel({
         isTodayView={isTodayView}
       />
 
+      {/* ── Break Analytics (PRODUCT-25702) ──────────────────────────── */}
+      <BreakAnalyticsPanel vaId={va.vaId} />
+
       {/* ── Role Responsibilities ────────────────────────────────────── */}
       <div className="mx-6 mb-4 border border-gray-200 rounded-xl overflow-hidden bg-white">
         <div className="flex items-center justify-between px-5 py-3">
@@ -3332,11 +3395,14 @@ function VAMonitorView() {
   const [rosterNotice, setRosterNotice] = useState(false);
   const appliedDeepLinkRef = useRef<string | null>(null);
 
-  // Emails flagged "absent" (shift on record, zero tracker sessions today) by
-  // the fleet attendance report (PRODUCT-18698). Merged onto snapshot rows
-  // client-side so the At Risk tab can surface no-shows, not just low
-  // productivity on VAs who did track.
-  const [absentEmails, setAbsentEmails] = useState<Set<string>>(new Set());
+  // Today's fleet attendance report keyed by lower-cased email, merged onto the
+  // snapshot rows client-side. It carries the "absent" verdict the At Risk tab
+  // surfaces (PRODUCT-18698) and the day's real first-start / last-end the
+  // roster cards show against the shift on record (PRODUCT-20332). Emails come
+  // from two databases, so the key is always lower-cased.
+  const [attendanceByEmail, setAttendanceByEmail] = useState<
+    Map<string, DailyAttendanceRow>
+  >(new Map());
 
   const fetchLive = useCallback(async () => {
     try {
@@ -3353,15 +3419,11 @@ function VAMonitorView() {
   const fetchAttendance = useCallback(async () => {
     try {
       const report = await getDailyAttendance();
-      setAbsentEmails(
-        new Set(
-          report.vas
-            .filter((r) => r.flags.includes("absent"))
-            .map((r) => r.email.toLowerCase()),
-        ),
+      setAttendanceByEmail(
+        new Map(report.vas.map((r) => [r.email.toLowerCase(), r])),
       );
     } catch {
-      // Non-critical for the live roster view — leave the previous set in
+      // Non-critical for the live roster view — leave the previous report in
       // place rather than blanking the At Risk tab on a transient failure.
     }
   }, []);
@@ -3404,11 +3466,12 @@ function VAMonitorView() {
     // request) — re-filtering with the localStorage copy of assistantEmails
     // can only hide VAs the server intentionally returned.
     const rawSnapshots = data?.snapshot ?? [];
-    const allSnapshots: VASnapshot[] = rawSnapshots.map((va) =>
-      absentEmails.has(va.email.toLowerCase()) && shiftHasStarted(va)
-        ? { ...va, isAbsentToday: true }
-        : va,
-    );
+    const allSnapshots: VASnapshot[] = rawSnapshots.map((va) => {
+      const attendance = attendanceByEmail.get(va.email.toLowerCase()) ?? null;
+      const isAbsentToday =
+        (attendance?.flags.includes("absent") ?? false) && shiftHasStarted(va);
+      return { ...va, attendance, ...(isAbsentToday ? { isAbsentToday: true } : {}) };
+    });
     const q = search.trim().toLowerCase();
     return allSnapshots
       .filter((va) => {
@@ -3427,7 +3490,7 @@ function VAMonitorView() {
           displayName(b.email, b.metadata),
         );
       });
-  }, [data, search, absentEmails]);
+  }, [data, search, attendanceByEmail]);
 
   const needsAttentionVAs = sortedVAs.filter((va) =>
     isNeedsAttention(getStatusBadge(va)),
