@@ -3,7 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getAlerts, markAlertsRead, alertEvidenceUrl, type Alert } from "../../lib/api";
+import {
+  getAlerts,
+  markAlertsRead,
+  alertEvidenceUrl,
+  isPoachingAlert,
+  poachingQuotes,
+  poachingDirection,
+  POACHING_DIRECTION_LABELS,
+  type Alert,
+} from "../../lib/api";
 
 const PAGE_SIZE = 50;
 
@@ -51,12 +60,18 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   non_work_activity: "Non-Work Activity",
   break_overtime: "Break Overtime",
   late_clock_in: "Late Clock-In",
-  off_platform: "Off Platform",
+  off_platform: "Poaching Risk",
   inappropriate_behavior: "Inappropriate Behavior",
+  poaching: "Poaching Risk",
 };
 
 function AlertIcon({ alertType }: { alertType: Alert["alertType"] }) {
-  if (alertType === "policy_violation" || alertType === "off_platform" || alertType === "inappropriate_behavior") {
+  if (
+    alertType === "policy_violation" ||
+    alertType === "off_platform" ||
+    alertType === "poaching" ||
+    alertType === "inappropriate_behavior"
+  ) {
     return (
       <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -359,6 +374,27 @@ export default function AlertsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <p className="text-xs text-gray-700 leading-snug max-w-xl">{alert.message}</p>
+                      {/* The lines that triggered a poaching flag, so the
+                          reviewer knows what to look for before opening the
+                          evidence (PRODUCT-24383). Quotes are absent for
+                          supervisors, who never see screenshot-derived content,
+                          and can be missing if the model returned none — the
+                          direction is still worth showing on its own. */}
+                      {isPoachingAlert(alert) &&
+                        (poachingQuotes(alert).length > 0 || poachingDirection(alert)) && (
+                          <div className="mt-1.5 max-w-xl border-l-2 border-red-300 pl-2.5">
+                            {poachingDirection(alert) && (
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-red-700 mb-0.5">
+                                {POACHING_DIRECTION_LABELS[poachingDirection(alert)!]}
+                              </p>
+                            )}
+                            {poachingQuotes(alert).map((q, i) => (
+                              <p key={i} className="text-[11px] italic text-red-900 leading-snug">
+                                &ldquo;{q}&rdquo;
+                              </p>
+                            ))}
+                          </div>
+                        )}
                     </td>
                     <td className="px-5 py-3.5">
                       <div>

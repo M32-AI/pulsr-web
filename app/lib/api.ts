@@ -248,8 +248,10 @@ export interface Alert {
     | "non_work_activity"
     | "break_overtime"
     | "late_clock_in"
+    // Written before PRODUCT-24383; new detections use "poaching".
     | "off_platform"
-    | "inappropriate_behavior";
+    | "inappropriate_behavior"
+    | "poaching";
   severity: "alert" | "warning" | "quality" | "severe";
   message: string;
   metadata: Record<string, unknown> | null;
@@ -258,6 +260,38 @@ export interface Alert {
   vaEmail?: string | null;
   screenshotCapturedAt?: string | null;
 }
+
+/** Both the current and the legacy type for the same risk (PRODUCT-24383). */
+export function isPoachingAlert(alert: Pick<Alert, "alertType">): boolean {
+  return alert.alertType === "poaching" || alert.alertType === "off_platform";
+}
+
+/**
+ * The verbatim lines that triggered a poaching alert, when the caller is allowed
+ * to see them. `/api/alerts` strips these for supervisors, who must never be
+ * shown screenshot-derived content (PRODUCT-25750), so an empty list here just
+ * means "not available to you" — never "no evidence".
+ */
+export function poachingQuotes(alert: Alert): string[] {
+  const quotes = alert.metadata?.quotes;
+  return Array.isArray(quotes) ? quotes.filter((q): q is string => typeof q === "string") : [];
+}
+
+export type PoachingDirection = "client_to_va" | "va_to_client" | "mutual" | "unclear";
+
+export function poachingDirection(alert: Alert): PoachingDirection | null {
+  const d = alert.metadata?.direction;
+  return d === "client_to_va" || d === "va_to_client" || d === "mutual" || d === "unclear"
+    ? d
+    : null;
+}
+
+export const POACHING_DIRECTION_LABELS: Record<PoachingDirection, string> = {
+  client_to_va: "Client → VA",
+  va_to_client: "VA → client",
+  mutual: "Both sides",
+  unclear: "Direction unclear",
+};
 
 /**
  * Dashboard deep-link to the evidence behind an alert: the VA, the moment it
@@ -280,14 +314,25 @@ export function alertEvidenceUrl(alert: Alert): string {
 export async function getAlerts(
   unreadOnly = false,
   limit = 50,
-  offset = 0
+  offset = 0,
+  /**
+   * Restrict to specific alert types. Needed to find a rare type reliably:
+   * prod writes thousands of productivity alerts, so the newest N alerts can
+   * span only a few hours and an older poaching alert would never appear
+   * (PRODUCT-24383).
+   */
+  alertTypes?: Alert["alertType"][]
 ): Promise<{ alerts: Alert[]; total: number; unreadCount: number }> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (unreadOnly) params.set("unread_only", "true");
+  if (alertTypes?.length) params.set("alert_type", alertTypes.join(","));
   const res = await apiFetch(`/api/alerts?${params}`);
   if (!res.ok) throw new Error("Failed to fetch alerts");
   return res.json();
 }
+
+/** Both alert types that represent poaching risk (PRODUCT-24383). */
+export const POACHING_ALERT_TYPES: Alert["alertType"][] = ["poaching", "off_platform"];
 
 export async function markAlertsRead(ids: string[]): Promise<void> {
   const res = await apiFetch("/api/alerts/mark-read", {
@@ -314,6 +359,28 @@ export async function subscribePush(subscription: {
     body: JSON.stringify(subscription),
   });
   if (!res.ok) throw new Error("Failed to save push subscription");
+}
+
+export interface PushTestResult {
+  /** Subscriptions the server tried. 0 = desktop alerts are not enabled anywhere. */
+  total: number;
+  sent: number;
+  failed: number;
+  /** Subscriptions the push service rejected as gone; the server deleted them. */
+  expired: number;
+  error?: string;
+}
+
+/**
+ * Ask the server to push a test notification to this user's own devices
+ * (PRODUCT-24383) — proves VAPID config, the stored subscription, the push
+ * service, the service worker, and the click-through all work.
+ */
+export async function sendTestPush(): Promise<PushTestResult> {
+  const res = await apiFetch("/api/push/test", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error ?? "Failed to send test notification");
+  return data;
 }
 
 export async function unsubscribePush(endpoint: string): Promise<void> {
