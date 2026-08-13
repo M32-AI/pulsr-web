@@ -52,12 +52,37 @@ export async function setMonitoring(vaId: string, enabled: boolean) {
   return res.json();
 }
 
+export type AttendanceFlag = "absent" | "late_start" | "early_end" | "overtime";
+
+/**
+ * How the VA's day measured up against their shift. Absent when the VA has no
+ * shift on record — the tracker cannot judge a day it has no schedule for.
+ */
+export interface ShiftCompliance {
+  /** ISO instants of the scheduled shift boundaries for this date. */
+  shiftStart: string;
+  shiftEnd: string;
+  /** First tracked start / last tracked end, or null while it hasn't happened. */
+  actualStart: string | null;
+  actualEnd: string | null;
+  lateStartSeconds: number;
+  earlyEndSeconds: number;
+  overtimeSeconds: number;
+  flags: AttendanceFlag[];
+}
+
 export interface DailyAttendanceRow {
   vaId: string;
   email: string;
   name: string | null;
   hasShift: boolean;
-  flags: ("absent" | "late_start" | "early_end" | "overtime")[];
+  timezone: string;
+  workSeconds: number;
+  breakSeconds: number;
+  firstSessionStart: string | null;
+  lastSessionEnd: string | null;
+  flags: AttendanceFlag[];
+  compliance: ShiftCompliance | null;
 }
 
 export interface DailyAttendanceResponse {
@@ -75,6 +100,78 @@ export interface DailyAttendanceResponse {
 export async function getDailyAttendance(date?: string): Promise<DailyAttendanceResponse> {
   const res = await apiFetch(`/admin/reports/daily-attendance${date ? `?date=${date}` : ""}`);
   if (!res.ok) throw new Error("Failed to fetch daily attendance report");
+  return res.json();
+}
+
+// Break analytics (PRODUCT-25702)
+
+export type BreakFlag = "over_daily_limit" | "over_weekly_limit" | "no_breaks_recorded";
+
+export interface BreakDay {
+  /** The VA's own local date, "YYYY-MM-DD". */
+  date: string;
+  breakSeconds: number;
+  breakCount: number;
+  workSeconds: number;
+  overLimit: boolean;
+}
+
+export interface BreakWeek {
+  weekStart: string;
+  breakSeconds: number;
+  trackedDays: number;
+  complete: boolean;
+  overLimit: boolean;
+}
+
+export interface VaBreakAnalytics {
+  vaId: string;
+  email: string;
+  name: string | null;
+  timezone: string;
+  trackedDays: number;
+  daysWithBreak: number;
+  breakSessions: number;
+  totalBreakSeconds: number;
+  avgBreakSecondsPerDay: number;
+  /** Null when the window holds no whole Mon–Sun week to average. */
+  avgBreakSecondsPerWeek: number | null;
+  daysOverLimit: number;
+  weeksOverLimit: number;
+  longestBreakDay: BreakDay | null;
+  flags: BreakFlag[];
+  days: BreakDay[];
+  weeks: BreakWeek[];
+}
+
+export interface BreakAnalyticsResponse {
+  window: { days: number; startDate: string; endDate: string };
+  limits: { dailySeconds: number; weeklySeconds: number };
+  summary: {
+    totalVAs: number;
+    vasWithTrackedDays: number;
+    vasWithBreaks: number;
+    vasWithNoBreaksRecorded: number;
+    vasOverDailyLimit: number;
+    vasOverWeeklyLimit: number;
+    totalBreakSessions: number;
+    avgBreakSecondsPerDay: number;
+  };
+  vas: VaBreakAnalytics[];
+}
+
+/** Omit `vaId` for the whole fleet the caller is allowed to see. */
+export async function getBreakAnalytics(
+  days = 30,
+  vaId?: string,
+): Promise<BreakAnalyticsResponse> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (vaId) params.set("va_id", vaId);
+  const res = await apiFetch(`/admin/analytics/breaks?${params}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error ?? `Server returned ${res.status}`);
+  }
   return res.json();
 }
 
