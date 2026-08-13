@@ -6,19 +6,31 @@ function getAccessToken() {
   return useAuthStore.getState().accessToken ?? "";
 }
 
-function buildHeaders(accessToken: string, overrides: RequestInit["headers"] = {}): Record<string, string> {
+/**
+ * The JSON content-type is only sent when there IS a body. Fastify rejects a
+ * request that declares `application/json` and then sends nothing with
+ * FST_ERR_CTP_EMPTY_JSON_BODY — a 400 "Bad Request" raised before the route
+ * handler ever runs. Every bodyless POST here was hitting that: the alerts
+ * panel's "Test" button, and sessionStart/sessionStop via sessionStore.
+ */
+function buildHeaders(
+  accessToken: string,
+  overrides: RequestInit["headers"] = {},
+  hasBody = false,
+): Record<string, string> {
   return {
-    "Content-Type": "application/json",
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     ...((overrides as Record<string, string>) ?? {}),
   };
 }
 
 async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const hasBody = options.body != null;
   let accessToken = getAccessToken();
   let res = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: buildHeaders(accessToken, options.headers),
+    headers: buildHeaders(accessToken, options.headers, hasBody),
   });
 
   if (res.status === 401) {
@@ -27,7 +39,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
       accessToken = getAccessToken();
       res = await fetch(`${API_URL}${path}`, {
         ...options,
-        headers: buildHeaders(accessToken, options.headers),
+        headers: buildHeaders(accessToken, options.headers, hasBody),
       });
     } catch {
       // refreshSession already called signOut — return the 401 so callers handle it
