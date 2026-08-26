@@ -9,6 +9,7 @@ import { timezoneToFlag, shiftStartToUTC, TZ_OFFSET_MINUTES } from "../../lib/ti
 import VAAnalyticsSection from "../../components/VAAnalyticsSection";
 import AlertsPanel from "../../components/AlertsPanel";
 import BreakAnalyticsPanel from "../../components/BreakAnalyticsPanel";
+import VaReportsPanel from "../../components/VaReportsPanel";
 import DesktopAlertsPrompt from "../../components/DesktopAlertsPrompt";
 import {
   getLive,
@@ -3213,6 +3214,9 @@ function VADetailPanel({
 
       {/* ── Break Analytics (PRODUCT-25702) ──────────────────────────── */}
       <BreakAnalyticsPanel vaId={va.vaId} />
+
+      {/* ── VA Reports — 3-dot menu submissions (PRODUCT-27087) ──────── */}
+      <VaReportsPanel vaId={va.vaId} />
 
       {/* ── Role Responsibilities ────────────────────────────────────── */}
       <div className="mx-6 mb-4 border border-gray-200 rounded-xl overflow-hidden bg-white">

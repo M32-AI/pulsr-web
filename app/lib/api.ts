@@ -187,6 +187,33 @@ export async function getBreakAnalytics(
   return res.json();
 }
 
+export type VaReportType =
+  | "call_in_sick"
+  | "power_outage"
+  | "incorrect_shift"
+  | "incident_response"
+  | "feedback";
+
+export interface VaReport {
+  id: string;
+  type: VaReportType;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+/** VA-submitted reports from the desktop app's 3-dot menu (PRODUCT-27087). */
+export async function getVaReports(vaId: string): Promise<VaReport[]> {
+  const params = new URLSearchParams({ va_id: vaId });
+  const res = await apiFetch(`/admin/va-reports?${params}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error ?? `Server returned ${res.status}`);
+  }
+  const data = await res.json();
+  return data.reports ?? [];
+}
+
 export async function getQueueStats() {
   const res = await apiFetch("/admin/queue-stats");
   if (!res.ok) throw new Error("Failed to fetch queue stats");
