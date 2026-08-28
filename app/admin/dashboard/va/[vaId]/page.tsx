@@ -394,7 +394,7 @@ function ScreenshotsTab({ vaId }: { vaId: string }) {
       setData(res);
       setOffset(off);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load screenshots");
+      setError(err instanceof Error ? err.message : "Failed to load activity");
     } finally {
       setLoading(false);
     }
@@ -429,7 +429,7 @@ function ScreenshotsTab({ vaId }: { vaId: string }) {
 
       {data && (
         <p className="text-xs text-zinc-500 mb-4">
-          {shots.length} screenshot{shots.length !== 1 ? "s" : ""}
+          {shots.length} capture{shots.length !== 1 ? "s" : ""}
           {data.hasNext ? " (more available)" : ""}
         </p>
       )}
@@ -443,7 +443,7 @@ function ScreenshotsTab({ vaId }: { vaId: string }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={s.presignedUrl}
-              alt={`Screenshot at ${s.capturedAt}`}
+              alt={`Activity capture at ${s.capturedAt}`}
               className="w-full aspect-video object-cover bg-zinc-800 cursor-pointer"
               onClick={() => setExpanded(expanded === s.id ? null : s.id)}
               loading="lazy"
@@ -482,7 +482,7 @@ function ScreenshotsTab({ vaId }: { vaId: string }) {
         ))}
         {shots.length === 0 && !loading && (
           <p className="col-span-full text-center text-zinc-600 text-sm py-12">
-            No screenshots for this date
+            No activity captures for this date
           </p>
         )}
       </div>
@@ -559,7 +559,7 @@ function AnalyticsTab({ vaId }: { vaId: string }) {
       {data && (
         <div className="space-y-6">
           <p className="text-xs text-zinc-500">
-            {data.totalAnalyzed} analyzed screenshot{data.totalAnalyzed !== 1 ? "s" : ""}
+            {data.totalAnalyzed} analyzed capture{data.totalAnalyzed !== 1 ? "s" : ""}
           </p>
 
           {/* Category breakdown */}
@@ -593,7 +593,7 @@ function AnalyticsTab({ vaId }: { vaId: string }) {
               ))}
             </div>
           ) : (
-            <p className="text-zinc-600 text-sm">No analyzed screenshots for this date</p>
+            <p className="text-zinc-600 text-sm">No analyzed captures for this date</p>
           )}
 
           {/* Hourly breakdown */}
@@ -642,7 +642,7 @@ export default function VADetailPage({ params }: { params: Promise<{ vaId: strin
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "activity", label: "Activity" },
-    ...(showScreenshots ? [{ id: "screenshots" as const, label: "Screenshots" }] : []),
+    ...(showScreenshots ? [{ id: "screenshots" as const, label: "Captures" }] : []),
     { id: "analytics", label: "Analytics" },
   ];
 

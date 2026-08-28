@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Pulsr — AI-Powered Time Tracking",
   description:
-    "Pulsr automatically tracks your work using AI screenshot analysis. Download for macOS, Windows, or Linux.",
+    "Pulsr automatically tracks your work using AI activity analysis. Download for macOS, Windows, or Linux.",
 };
 
 export default function RootLayout({

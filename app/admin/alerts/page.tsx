@@ -414,7 +414,7 @@ export default function AlertsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {alert.screenshotId ? "View screenshot" : "View activity"}
+                        {alert.screenshotId ? "View capture" : "View activity"}
                         <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <path d="M9 18l6-6-6-6" />
                         </svg>

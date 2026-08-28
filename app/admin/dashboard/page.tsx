@@ -391,7 +391,7 @@ function computeSlotRisk(
       avgProductivity: null,
       riskLevel: "no-data",
       riskLabel: "Pending Analysis",
-      summaryText: `${slotScreenshots.length} screenshot(s) captured, analysis pending.`,
+      summaryText: `${slotScreenshots.length} activity capture(s) recorded, analysis pending.`,
     };
   }
   if (avgProductivity >= 70) {
@@ -423,7 +423,7 @@ function computeSlotRisk(
     riskLabel: "CRITICAL Risk Detected",
     summaryText:
       analyzedScreenshots[0]?.summary ??
-      `High period of inactivity detected. ${lowScoreCount} low-productivity screenshot(s) found.`,
+      `High period of inactivity detected. ${lowScoreCount} low-productivity capture(s) found.`,
   };
 }
 
@@ -886,7 +886,7 @@ function DailyPerformanceOverview({
     },
     {
       value: metrics?.screenshotCount != null ? String(metrics.screenshotCount) : null,
-      label: "SCREENSHOTS",
+      label: "CAPTURES",
       valueClass: "text-gray-800",
     },
     {
@@ -2152,9 +2152,9 @@ function HourActivityCard({
               {isLoaded
                 ? slotData!.summaryText
                 : isLoading
-                  ? "Loading screenshots…"
+                  ? "Loading activity…"
                   : isError
-                    ? (slotData!.error ?? "Failed to load screenshots.")
+                    ? (slotData!.error ?? "Failed to load activity.")
                     : "Loading activity data…"}
             </p>
           </div>
@@ -2162,7 +2162,7 @@ function HourActivityCard({
           {isLoading && (
             <div className="border-t border-gray-100 px-4 py-8 flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs text-gray-400">Fetching screenshots…</p>
+              <p className="text-xs text-gray-400">Fetching activity…</p>
             </div>
           )}
 
@@ -2177,7 +2177,7 @@ function HourActivityCard({
             <div className="border-t border-gray-100 px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-gray-500">
-                  {screenshots.length} screenshot(s) captured
+                  {screenshots.length} activity capture(s) recorded
                 </p>
                 {slotData!.avgProductivity !== null && (
                   <span className="text-xs text-gray-400">
@@ -2213,7 +2213,7 @@ function HourActivityCard({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={s.presignedUrl}
-                        alt="Screenshot"
+                        alt="Activity capture"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -2284,7 +2284,7 @@ function HourActivityCard({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={lightbox.presignedUrl}
-                  alt="Screenshot"
+                  alt="Activity capture"
                   className="w-full h-full object-contain max-h-[60vh]"
                 />
               ) : (
