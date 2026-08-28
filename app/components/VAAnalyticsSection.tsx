@@ -177,7 +177,7 @@ export default function VAAnalyticsSection({
         </h2>
         {data && (
           <span className="text-xs text-gray-400">
-            {data.totalAnalyzed} analyzed screenshot
+            {data.totalAnalyzed} analyzed capture
             {data.totalAnalyzed !== 1 ? "s" : ""}
           </span>
         )}
@@ -198,7 +198,7 @@ export default function VAAnalyticsSection({
       {!loading && !error && data?.totalAnalyzed === 0 && (
         <div className="flex items-center justify-center py-8">
           <p className="text-sm text-gray-400">
-            No analyzed screenshots for this day
+            No analyzed captures for this day
           </p>
         </div>
       )}
@@ -237,7 +237,7 @@ export default function VAAnalyticsSection({
                     const timeStr = totalWorkSeconds
                       ? secondsToHM(Math.round((pct / 100) * totalWorkSeconds))
                       : null;
-                    return [timeStr ?? `${value} screenshots`, String(name ?? "")];
+                    return [timeStr ?? `${value} captures`, String(name ?? "")];
                   }}
                 />
               </PieChart>
@@ -295,7 +295,7 @@ export default function VAAnalyticsSection({
                   <Tooltip
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     formatter={(value: any, name?: unknown) => [
-                      `${value} screenshot${value !== 1 ? "s" : ""}`,
+                      `${value} capture${value !== 1 ? "s" : ""}`,
                       String(name ?? ""),
                     ]}
                   />

@@ -208,7 +208,7 @@ export async function getScreenshots(
 ) {
   const params = new URLSearchParams({ va_id: vaId, start, end, timezone, offset: String(offset) });
   const res = await apiFetch(`/admin/screenshots?${params}`);
-  if (!res.ok) throw new Error("Failed to fetch screenshots");
+  if (!res.ok) throw new Error("Failed to fetch activity captures");
   return res.json();
 }
 

@@ -125,7 +125,7 @@ function PromptModal({
               </pre>
             ) : (
               <p className="text-sm text-gray-400 text-center py-10">
-                No prompt logged for this screenshot (captured before logging was enabled).
+                No prompt logged for this capture (recorded before logging was enabled).
               </p>
             )
           ) : (
@@ -135,7 +135,7 @@ function PromptModal({
               </pre>
             ) : (
               <p className="text-sm text-gray-400 text-center py-10">
-                No raw response logged for this screenshot.
+                No raw response logged for this capture.
               </p>
             )
           )}
@@ -210,7 +210,7 @@ function ScreenshotRow({
             >
               <img
                 src={row.presignedUrl}
-                alt="screenshot"
+                alt="activity capture"
                 className="w-full h-full object-cover"
               />
             </button>
@@ -313,7 +313,7 @@ function ScreenshotRow({
       {lightbox && row.presignedUrl && (
         <Lightbox
           src={row.presignedUrl}
-          alt={`Screenshot ${row.id}`}
+          alt={`Activity capture ${row.id}`}
           onClose={() => setLightbox(false)}
         />
       )}
@@ -481,7 +481,7 @@ export default function LowProductivityPage() {
             Dashboard
           </Link>
           <span className="text-gray-300">/</span>
-          <span className="text-sm font-semibold text-gray-900">Low Productivity Screenshots</span>
+          <span className="text-sm font-semibold text-gray-900">Low Productivity Captures</span>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 border border-red-100 px-2.5 py-1 text-xs font-semibold text-red-600">
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -499,7 +499,7 @@ export default function LowProductivityPage() {
           <div>
             <h1 className="text-lg font-bold text-gray-900">Low Productivity Review</h1>
             <p className="text-xs text-gray-400 mt-0.5">
-              Screenshots where the AI assigned a productivity score below the threshold — review the image, AI output, and the exact prompt used.
+              Activity captures where the AI assigned a productivity score below the threshold — review the image, AI output, and the exact prompt used.
             </p>
           </div>
           {data && (
@@ -526,7 +526,7 @@ export default function LowProductivityPage() {
           </div>
           <div className="w-px h-4 bg-gray-200" />
           <p className="text-xs text-gray-400">
-            Showing screenshots with productivity score &lt; <span className="font-semibold text-gray-600">{threshold}</span>
+            Showing captures with productivity score &lt; <span className="font-semibold text-gray-600">{threshold}</span>
           </p>
           <div className="ml-auto">
             <button
@@ -563,7 +563,7 @@ export default function LowProductivityPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/60">
                   <th className="px-4 py-3 text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-10">#</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Screenshot</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Capture</th>
                   <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">VA</th>
                   <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Captured At</th>
                   <th className="px-4 py-3 text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Score</th>
@@ -594,7 +594,7 @@ export default function LowProductivityPage() {
                         <circle cx="8.5" cy="8.5" r="1.5" />
                         <polyline points="21 15 16 10 5 21" />
                       </svg>
-                      <p className="text-sm text-gray-400 font-medium">No screenshots found</p>
+                      <p className="text-sm text-gray-400 font-medium">No captures found</p>
                       <p className="text-xs text-gray-300 mt-1">Try increasing the score threshold</p>
                     </td>
                   </tr>
