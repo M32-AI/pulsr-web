@@ -515,31 +515,6 @@ function shiftHasStarted(va: VASnapshot): boolean {
   return shiftStartToUTC(va.metadata.shift_start_time, tzAbbr).getTime() <= Date.now();
 }
 
-/**
- * The instant today's shift is scheduled to END, or null when it can't be
- * computed safely. Overnight shifts (end <= start) roll onto the next day.
- *
- * Fails closed on an unmapped timezone abbreviation for the same reason
- * `shiftHasStarted` does: shiftStartToUTC would silently assume UTC+0 and
- * produce a wrong-but-plausible time, which here would mean flagging a real
- * person for leaving early when they did not.
- */
-function shiftEndInstant(va: VASnapshot): Date | null {
-  const { shift_start_time: start, shift_end_time: end } = va.metadata ?? {};
-  if (!start || !end) return null;
-  const tzAbbr = va.metadata?.shift_time_zone?.trim().toUpperCase() ?? "";
-  if (!(tzAbbr in TZ_OFFSET_MINUTES)) return null;
-
-  const startMs = shiftStartToUTC(start, tzAbbr).getTime();
-  const endMs = shiftStartToUTC(end, tzAbbr).getTime();
-  return new Date(endMs <= startMs ? endMs + 86_400_000 : endMs);
-}
-
-/** True once today's scheduled shift end has passed in the VA's timezone. */
-function shiftHasEnded(va: VASnapshot): boolean {
-  const end = shiftEndInstant(va);
-  return end !== null && end.getTime() <= Date.now();
-}
 
 /**
  * A timestamp as the viewer's local wall clock, in the same 24h format
@@ -1854,8 +1829,21 @@ function VACard({
   );
   const startIsLate = Boolean(actualStart) && (attendance?.flags.includes("late_start") ?? false);
 
-  const shiftIsOver = shiftHasEnded(va) && va.status !== "active";
-  const actualEnd = shiftIsOver
+  // PRODUCT-20332 follow-up: this used to also require shiftHasEnded(va) —
+  // the SCHEDULED end time having passed. That's wrong for any VA missing
+  // shift metadata (shift_start_time/shift_end_time/a recognized timezone):
+  // shiftHasEnded can never become true without a schedule, so ENDS showed
+  // "--" forever even for a VA who had genuinely clocked out and had a real
+  // lastSessionEnd sitting in the data — the same class of gap PRODUCT-26995
+  // already found for a meaningful slice of the roster. actualStart above
+  // has never had this problem, since it was never schedule-gated to begin
+  // with; actualEnd now matches it. `attendance?.lastSessionEnd` is already
+  // scoped server-side to today's real sessions (routes/performance.ts), so
+  // it needs no schedule to be trustworthy — the schedule is only needed to
+  // judge EARLY-ness (endIsEarly below), never to decide whether to show the
+  // time at all. `status !== "active"` stays: a VA still mid-session right
+  // now should show "--", not their most recently closed session's end.
+  const actualEnd = va.status !== "active"
     ? formatLocalClock(attendance?.compliance?.actualEnd ?? attendance?.lastSessionEnd)
     : null;
   const endIsEarly = Boolean(actualEnd) && (attendance?.flags.includes("early_end") ?? false);
