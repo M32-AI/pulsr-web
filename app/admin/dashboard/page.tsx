@@ -1857,10 +1857,16 @@ function VACard({
   if ((scheduledStart === "--" || scheduledEnd === "--") && attendance?.compliance) {
     const zone = attendance.timezone || "UTC";
     const clock = (iso: string) => {
-      const d = new Date(iso);
-      return Number.isNaN(d.getTime())
-        ? "--"
-        : d.toLocaleTimeString("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false });
+      try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "--";
+        // `zone` is a validated IANA zone or "UTC" from the backend today, but
+        // the response type doesn't guarantee it — a bad zone would throw a
+        // RangeError here and take the whole card down.
+        return d.toLocaleTimeString("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false });
+      } catch {
+        return "--";
+      }
     };
     if (scheduledStart === "--") scheduledStart = clock(attendance.compliance.shiftStart);
     if (scheduledEnd === "--") scheduledEnd = clock(attendance.compliance.shiftEnd);
