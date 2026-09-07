@@ -1804,18 +1804,6 @@ function VACard({
   const shiftEnd = meta?.shift_end_time ?? "";
   const shiftTZ = meta?.shift_time_zone ?? "";
 
-  let scheduledEnd = "--";
-  let scheduledStart = "--";
-  if (shiftEnd && shiftStart && shiftTZ) {
-      const local = convertShiftToLocalTime({
-        shift_start_time: shiftStart,
-        shift_end_time: shiftEnd,
-        shift_time_zone: shiftTZ,
-      });
-      scheduledEnd = local.localEndTime;
-      scheduledStart = local.localStartTime;
-  }
-
   // PRODUCT-20332: show what actually happened today against what was
   // scheduled. The actual bounds are the whole day's first start and last end
   // (from the attendance report) — `va.startTime` is only the session running
@@ -1849,18 +1837,46 @@ function VACard({
     : null;
   const endIsEarly = Boolean(actualEnd) && (attendance?.flags.includes("early_end") ?? false);
 
+  // The scheduled shift, "HH:MM". Primary source is /live's shift metadata
+  // (rendered in the viewer's timezone by convertShiftToLocalTime, which
+  // returns "" for an unrecognised tz). The attendance report carries its own
+  // shift boundaries as ISO instants and its own IANA timezone — use those as
+  // the fallback, since /live and the report read the same Wing MySQL seconds
+  // apart and can disagree during one of its blips (PRODUCT-20332).
+  let scheduledStart = "--";
+  let scheduledEnd = "--";
+  if (shiftStart && shiftEnd && shiftTZ) {
+    const local = convertShiftToLocalTime({
+      shift_start_time: shiftStart,
+      shift_end_time: shiftEnd,
+      shift_time_zone: shiftTZ,
+    });
+    scheduledStart = local.localStartTime || "--";
+    scheduledEnd = local.localEndTime || "--";
+  }
+  if ((scheduledStart === "--" || scheduledEnd === "--") && attendance?.compliance) {
+    const zone = attendance.timezone || "UTC";
+    const clock = (iso: string) => {
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime())
+        ? "--"
+        : d.toLocaleTimeString("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false });
+    };
+    if (scheduledStart === "--") scheduledStart = clock(attendance.compliance.shiftStart);
+    if (scheduledEnd === "--") scheduledEnd = clock(attendance.compliance.shiftEnd);
+  }
+
   // PRODUCT-20332: the actual times don't exist until the VA has started
   // (START) or finished (ENDS) their shift for the day. For a VA who has a
   // real shift on record, a bare "--" in the meantime reads as broken data
   // when the shift simply hasn't happened yet — so fall back to the scheduled
-  // time itself, muted, and say "ongoing" for the end of a shift a VA is
-  // still in. Only a VA with no shift at all shows "--".
+  // time itself, muted. START and ENDS are symmetric; only a VA with no shift
+  // at all shows "--".
   const hasShift = scheduledStart !== "--" && scheduledEnd !== "--";
   const startIsScheduled = !actualStart && hasShift;
-  const endIsOngoing = !actualEnd && va.status === "active";
-  const endIsScheduled = !actualEnd && !endIsOngoing && hasShift;
+  const endIsScheduled = !actualEnd && hasShift;
   const startDisplay = actualStart ?? (hasShift ? scheduledStart : "--");
-  const endDisplay = actualEnd ?? (endIsOngoing ? "ongoing" : hasShift ? scheduledEnd : "--");
+  const endDisplay = actualEnd ?? (hasShift ? scheduledEnd : "--");
 
   return (
     <button
@@ -1947,7 +1963,7 @@ function VACard({
             {startDisplay}
             {startIsLate && " ⚠️"}
           </p>
-          {scheduledStart !== "--" && !startIsScheduled && (
+          {!startIsScheduled && scheduledStart !== "--" && scheduledStart !== startDisplay && (
             <p className="text-[9px] text-gray-400">Sched {scheduledStart}</p>
           )}
         </div>
@@ -1960,13 +1976,13 @@ function VACard({
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Ends</p>
           <p
-            className={`font-medium ${endIsEarly ? "text-red-500" : endIsScheduled || endIsOngoing ? "text-gray-400" : "text-gray-700"}`}
-            title={endIsEarly ? "Stopped before the scheduled shift end" : endIsOngoing ? "Still in an active session" : endIsScheduled ? "Scheduled end — shift hasn't finished" : undefined}
+            className={`font-medium ${endIsEarly ? "text-red-500" : endIsScheduled ? "text-gray-400" : "text-gray-700"}`}
+            title={endIsEarly ? "Stopped before the scheduled shift end" : endIsScheduled ? "Scheduled end — shift hasn't finished yet" : undefined}
           >
             {endDisplay}
             {endIsEarly && " ⚠️"}
           </p>
-          {scheduledEnd !== "--" && !endIsScheduled && (
+          {!endIsScheduled && scheduledEnd !== "--" && scheduledEnd !== endDisplay && (
             <p className="text-[9px] text-gray-400">Sched {scheduledEnd}</p>
           )}
         </div>
