@@ -1849,6 +1849,19 @@ function VACard({
     : null;
   const endIsEarly = Boolean(actualEnd) && (attendance?.flags.includes("early_end") ?? false);
 
+  // PRODUCT-20332: the actual times don't exist until the VA has started
+  // (START) or finished (ENDS) their shift for the day. For a VA who has a
+  // real shift on record, a bare "--" in the meantime reads as broken data
+  // when the shift simply hasn't happened yet — so fall back to the scheduled
+  // time itself, muted, and say "ongoing" for the end of a shift a VA is
+  // still in. Only a VA with no shift at all shows "--".
+  const hasShift = scheduledStart !== "--" && scheduledEnd !== "--";
+  const startIsScheduled = !actualStart && hasShift;
+  const endIsOngoing = !actualEnd && va.status === "active";
+  const endIsScheduled = !actualEnd && !endIsOngoing && hasShift;
+  const startDisplay = actualStart ?? (hasShift ? scheduledStart : "--");
+  const endDisplay = actualEnd ?? (endIsOngoing ? "ongoing" : hasShift ? scheduledEnd : "--");
+
   return (
     <button
       type="button"
@@ -1928,13 +1941,13 @@ function VACard({
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Start</p>
           <p
-            className={`font-medium ${startIsLate ? "text-red-500" : "text-gray-700"}`}
-            title={startIsLate ? "Started after the scheduled shift start" : undefined}
+            className={`font-medium ${startIsLate ? "text-red-500" : startIsScheduled ? "text-gray-400" : "text-gray-700"}`}
+            title={startIsLate ? "Started after the scheduled shift start" : startIsScheduled ? "Scheduled start — shift hasn't begun" : undefined}
           >
-            {actualStart ?? "--"}
+            {startDisplay}
             {startIsLate && " ⚠️"}
           </p>
-          {scheduledStart !== "--" && (
+          {scheduledStart !== "--" && !startIsScheduled && (
             <p className="text-[9px] text-gray-400">Sched {scheduledStart}</p>
           )}
         </div>
@@ -1947,13 +1960,13 @@ function VACard({
         <div>
           <p className="text-gray-400 uppercase font-medium mb-0.5">Ends</p>
           <p
-            className={`font-medium ${endIsEarly ? "text-red-500" : "text-gray-700"}`}
-            title={endIsEarly ? "Stopped before the scheduled shift end" : undefined}
+            className={`font-medium ${endIsEarly ? "text-red-500" : endIsScheduled || endIsOngoing ? "text-gray-400" : "text-gray-700"}`}
+            title={endIsEarly ? "Stopped before the scheduled shift end" : endIsOngoing ? "Still in an active session" : endIsScheduled ? "Scheduled end — shift hasn't finished" : undefined}
           >
-            {actualEnd ?? "--"}
+            {endDisplay}
             {endIsEarly && " ⚠️"}
           </p>
-          {scheduledEnd !== "--" && (
+          {scheduledEnd !== "--" && !endIsScheduled && (
             <p className="text-[9px] text-gray-400">Sched {scheduledEnd}</p>
           )}
         </div>
